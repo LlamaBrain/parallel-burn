@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-19
+
+The end-of-session summary — the "artifact users screenshot and share"
+in SPEC §7.3 wording. Now generated automatically on `SessionEnd` and
+written to `~/.parallel-burn/summaries/YYYY-MM-DD-HHMM.md`.
+
+### Added
+
+- `src/core/summary.ts` — `renderSessionSummary` produces the SPEC §7.3
+  narrative-style markdown: opening line that leads with "session-context
+  squeezed into wall" + parallelism multiplier, then list-price + subsidy
+  multiplier (X× the Max-prorated daily), then cache reads/writes with a
+  token-mix percentage. Followed by a markdown table of sessions sorted
+  by start time, a by-project rollup, and a closing interpretation line
+  keyed to the compression ratio. `summaryFilename` builds
+  `YYYY-MM-DD-HHMM.md` in UTC.
+- `src/core/config.ts` — `~/.parallel-burn/config.json` reader with
+  `subscription_daily_usd` (default $6.67 = Max plan prorated),
+  `daily_streak_threshold_usd`, `server_port`, and
+  `pricing_refresh_url`. All fields optional; the defaults are the
+  right answer for most users. Sets per-field fallbacks for invalid
+  inputs (negative numbers, out-of-range ports, non-string URLs).
+- `src/hooks/session-end.ts` now calls `writeEndOfSessionSummary` after
+  finalizing the manifest. Summary failures are caught and logged to
+  stderr but never block manifest finalization — the data plane
+  remains the source of truth.
+- 21 new Vitest tests across `summary.test.ts` and `config.test.ts`.
+  **211 tests total. 100 % statement / function / line coverage on every
+  `src/core/` and `src/cli/` module (15 modules).**
+
+### Changed
+
+- `package.json` and `plugin.json` version → `0.4.0`.
+
+### Verified
+
+- `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean.
+- **End-to-end smoke against the live in-progress session:**
+
+      ● Session Summary for 2026-05-19
+
+        0h 54m of session-context squeezed into 0h 54m of wall — a
+        1.0× parallelism multiplier. $215.43 list-price across 1
+        session, roughly 32.3× the Max-prorated daily. Cache reads
+        cleared 61,892,693, with 1,412,459 writes carrying ~2%
+        output, ~98% cache.
+
+  Reads exactly like SPEC §7.3's prescribed shape. The 32.3× subsidy
+  multiplier and 98% cache-token share are the kind of headline this
+  product is built to produce.
+
+[0.4.0]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.4.0
+
 ## [0.3.0] — 2026-05-19
 
 The presentation layer. With the aggregator from 0.2.0 producing typed
@@ -294,5 +347,5 @@ machine.
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.4.0...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1
