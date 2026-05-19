@@ -113,6 +113,10 @@ export class PricingProvider {
     return Object.keys(this.doc.models);
   }
 
+  entries(): ReadonlyArray<readonly [string, ModelPricing]> {
+    return Object.entries(this.doc.models);
+  }
+
   isStale(now: Date = new Date()): boolean {
     return this.ageDays(now) > STALENESS_THRESHOLD_DAYS;
   }

@@ -62,6 +62,15 @@ describe("PricingProvider.fromDocument", () => {
     expect(p.models()).toEqual(expect.arrayContaining(["claude-opus-4-7", "claude-haiku-4-5"]));
   });
 
+  it("entries() yields each [name, rates] pair", () => {
+    const p = PricingProvider.fromDocument(VALID_DOC);
+    const entries = p.entries();
+    expect(entries).toHaveLength(2);
+    const map = new Map(entries);
+    expect(map.get("claude-opus-4-7")?.input_per_mtok).toBe(15);
+    expect(map.get("claude-haiku-4-5")?.input_per_mtok).toBe(1);
+  });
+
   it("exposes per-model rates", () => {
     const p = PricingProvider.fromDocument(VALID_DOC);
     const opus = p.get("claude-opus-4-7");

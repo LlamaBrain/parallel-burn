@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] — 2026-05-19
+
+### Added
+
+- `src/core/event.ts` — `MessageEvent` and `MessageEventUsage` types matching
+  SPEC.md §7.1, with branded IDs from `src/core/ids.ts`. Type only; parsing
+  lands in Phase 3.
+- `src/core/cost.ts` — `computeCost(event, pricing) → CostBreakdown`, the
+  retail-USD calculator. Reads precomputed per-model rates straight from the
+  rate card (no `× 1.25` in code). Splits the breakdown into input / output /
+  5m-cache-write / 1h-cache-write / cache-read. Reconciles legacy
+  `cache_creation_input_tokens` against the granular 5m/1h breakdown:
+  granular fields win when present, any remaining legacy total bills at the
+  5m rate (the original ephemeral cache flavor).
+- Unknown-model handling per CLAUDE.md "do not silently zero-cost":
+  `CostBreakdown.unknownModel` flags the case and the cost is billed against
+  the most-expensive known model's rates (`conservativeFallbackModel` carries
+  the name). Errs toward overestimating, never underestimating.
+- `EmptyPricingError` thrown when the `PricingProvider` exposes no models —
+  callers can never end up with a zero-cost false negative for an unknown
+  model.
+- `PricingProvider.entries()` — new iteration helper yielding `[name, rates]`
+  pairs. Used by the unknown-model fallback to avoid a TypeScript-mandated
+  but dynamically-unreachable defensive branch.
+- 13 new Vitest tests in `tests/cost.test.ts` plus an `entries()` test in
+  `tests/pricing.test.ts`. 53 tests total. 100 % statement / branch /
+  function / line coverage on all four `src/core/` modules.
+
+### Changed
+
+- `package.json` and `plugin.json` version → `0.0.3`.
+
+### Verification status
+
+- `tsc --strict` clean.
+- `eslint --quiet` clean.
+- All tests pass; `src/core/` at 100 % coverage on every metric.
+- **Manual verification against an Anthropic console line item is still
+  required before this rate card can be considered production-trusted.**
+  The math matches the published rates by construction (rates × tokens /
+  1 000 000) and round-trips against unit-rate cases (1 M tokens × $15/MTok
+  = $15.00). A real-session cross-check is queued and will be noted in the
+  CHANGELOG when complete.
+
+[0.0.3]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.3
+
 ## [0.0.2] — 2026-05-19
 
 ### Added
@@ -58,5 +104,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.0.3...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1

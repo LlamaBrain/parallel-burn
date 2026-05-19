@@ -8,8 +8,9 @@ You are working on ParallelBurn, a Claude Code plugin. This file is the *ongoing
 
 Phase 0 (skeleton) — **complete** at `v0.0.1`.
 Phase 1 (typed IDs + pricing infrastructure) — **complete** at `v0.0.2`.
+Phase 2 (cost calculator) — **complete** at `v0.0.3`.
 
-Phase 2 (cost calculator) — **next**.
+Phase 3 (hook scripts + transcript-derived data plane, per ADR-0003) — **next**.
 
 ### Begin Phase 2 by
 
