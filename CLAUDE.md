@@ -10,8 +10,9 @@ Phase 0 (skeleton) — **complete** at `v0.0.1`.
 Phase 1 (typed IDs + pricing infrastructure) — **complete** at `v0.0.2`.
 Phase 2 (cost calculator) — **complete** at `v0.0.3`.
 Phase 3 (hooks + transcript-derived data plane) — **complete** at `v0.1.0`.
+Phase 4 (aggregator + compression + streak) — **complete** at `v0.2.0`.
 
-Phase 4 (aggregator + compression-ratio + streak metrics) — **next**.
+Phase 5 (`/parallel-burn` and `/streak` slash commands) — **next**.
 
 ### Begin Phase 2 by
 

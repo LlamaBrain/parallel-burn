@@ -1,0 +1,273 @@
+// Aggregator — walks SessionManifests, reads transcripts, produces
+// per-day / per-project / per-session rollups.
+//
+// SPEC.md §10 Phase 4: "Walks all JSONL files in a date range, computes
+// the metrics in section 8. Compression ratio uses merged-interval
+// wall-clock-window, not naive first-to-last."
+//
+// The aggregator is the bridge between the on-disk data plane and the
+// presentation layer (slash commands, summary, overlay). It is the only
+// module that fans out to multiple sessions; everything below it is
+// single-session-scoped.
+
+import { readdir } from "node:fs/promises";
+
+import { computeCost, type CostBreakdown } from "./cost.js";
+import { computeCompression, type Interval } from "./compression.js";
+import type { MessageEvent } from "./event.js";
+import type { ProjectId, SessionId } from "./ids.js";
+import {
+  readManifestOptional,
+  type SessionManifest,
+} from "./manifest.js";
+import {
+  parallelBurnSessionMetaPath,
+  parallelBurnSessionsDir,
+} from "./paths.js";
+import type { PricingProvider } from "./pricing.js";
+import { dateOf } from "./streak.js";
+import { readTranscript } from "./transcript.js";
+
+export type SessionAggregate = {
+  readonly sessionId: SessionId;
+  readonly project: ProjectId;
+  readonly model: string | null;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly lastSeenActive: string;
+  readonly durationMs: number;
+  readonly messageCount: number;
+  readonly costUsd: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
+  readonly unknownModel: boolean;
+};
+
+export type ProjectAggregate = {
+  readonly project: ProjectId;
+  readonly durationMs: number;
+  readonly costUsd: number;
+  readonly sessionCount: number;
+};
+
+export type DailyAggregate = {
+  readonly date: string;
+  readonly sessions: readonly SessionAggregate[];
+  readonly byProject: readonly ProjectAggregate[];
+  readonly sessionContextMs: number;
+  readonly wallClockWindowMs: number;
+  readonly compressionRatio: number;
+  readonly totalCostUsd: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
+  readonly cacheDisciplineRatio: number;
+};
+
+export type AggregatorOptions = {
+  /** Override the on-disk sessions directory (used by tests). */
+  readonly sessionsDir?: string;
+  /** Override the manifest path resolver (used by tests). */
+  readonly metaPathFor?: (sessionId: SessionId) => string;
+  /** Inject a transcript reader (used by tests). */
+  readonly readTranscriptFor?: (manifest: SessionManifest) => Promise<MessageEvent[]>;
+};
+
+/**
+ * Aggregate a single session: read its manifest + transcript, sum the
+ * cost and token totals, derive duration from the manifest. Returns null
+ * when the manifest cannot be read.
+ */
+export async function aggregateSession(
+  sessionId: SessionId,
+  pricing: PricingProvider,
+  options: AggregatorOptions = {},
+): Promise<SessionAggregate | null> {
+  const metaPath = (options.metaPathFor ?? parallelBurnSessionMetaPath)(sessionId);
+  const manifest = await readManifestOptional(metaPath);
+  if (manifest === null) return null;
+  return aggregateFromManifest(manifest, pricing, options);
+}
+
+/**
+ * Aggregate from an already-loaded manifest. Splits out for tests and to
+ * avoid double-loading when the caller already has a manifest in hand.
+ */
+export async function aggregateFromManifest(
+  manifest: SessionManifest,
+  pricing: PricingProvider,
+  options: AggregatorOptions = {},
+): Promise<SessionAggregate> {
+  const reader = options.readTranscriptFor ?? defaultReader;
+  const events = await reader(manifest);
+  return summarizeSession(manifest, events, pricing);
+}
+
+async function defaultReader(manifest: SessionManifest): Promise<MessageEvent[]> {
+  try {
+    return await readTranscript(manifest.transcript_path);
+  } catch {
+    return [];
+  }
+}
+
+export function summarizeSession(
+  manifest: SessionManifest,
+  events: readonly MessageEvent[],
+  pricing: PricingProvider,
+): SessionAggregate {
+  let cost = 0;
+  let input = 0;
+  let output = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  let unknownModel = false;
+  let model: string | null = null;
+
+  for (const ev of events) {
+    const breakdown: CostBreakdown = computeCost(ev, pricing);
+    cost += breakdown.total;
+    input += ev.usage.input_tokens;
+    output += ev.usage.output_tokens;
+    cacheRead += ev.usage.cache_read_input_tokens;
+    cacheWrite += Math.max(
+      ev.usage.cache_creation_input_tokens,
+      ev.usage.cache_creation.ephemeral_5m_input_tokens +
+        ev.usage.cache_creation.ephemeral_1h_input_tokens,
+    );
+    if (breakdown.unknownModel) unknownModel = true;
+    if (model === null) model = ev.model;
+  }
+
+  const startMs = Date.parse(manifest.started_at);
+  const endMs = Date.parse(
+    manifest.ended_at ?? manifest.last_seen_active,
+  );
+  const durationMs = Number.isFinite(startMs) && Number.isFinite(endMs)
+    ? Math.max(0, endMs - startMs)
+    : 0;
+
+  return {
+    sessionId: manifest.session_id,
+    project: manifest.project,
+    model,
+    startedAt: manifest.started_at,
+    endedAt: manifest.ended_at,
+    lastSeenActive: manifest.last_seen_active,
+    durationMs,
+    messageCount: events.length,
+    costUsd: cost,
+    inputTokens: input,
+    outputTokens: output,
+    cacheReadTokens: cacheRead,
+    cacheWriteTokens: cacheWrite,
+    unknownModel,
+  };
+}
+
+/**
+ * List every session manifest currently on disk.
+ */
+export async function listSessions(options: AggregatorOptions = {}): Promise<SessionManifest[]> {
+  const dir = options.sessionsDir ?? parallelBurnSessionsDir();
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch (err) {
+    if (isFileNotFound(err)) return [];
+    throw err;
+  }
+  const out: SessionManifest[] = [];
+  for (const name of entries) {
+    if (!name.endsWith(".meta.json")) continue;
+    const manifest = await readManifestOptional(`${dir}/${name}`);
+    if (manifest !== null) out.push(manifest);
+  }
+  return out;
+}
+
+function isFileNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    err.code === "ENOENT"
+  );
+}
+
+/**
+ * Aggregate all sessions whose `started_at` falls on the given `date`
+ * (UTC YYYY-MM-DD). Returns zeroed metrics if no sessions match.
+ */
+export async function aggregateDay(
+  date: string,
+  pricing: PricingProvider,
+  options: AggregatorOptions = {},
+): Promise<DailyAggregate> {
+  const all = await listSessions(options);
+  const onDay = all.filter((m) => dateOf(m.started_at) === date);
+  const sessions: SessionAggregate[] = [];
+  for (const m of onDay) {
+    sessions.push(await aggregateFromManifest(m, pricing, options));
+  }
+  return rollUpDay(date, sessions);
+}
+
+/**
+ * Roll an already-aggregated set of sessions into a DailyAggregate. Pure;
+ * no I/O. Easier to test the math in isolation.
+ */
+export function rollUpDay(
+  date: string,
+  sessions: readonly SessionAggregate[],
+): DailyAggregate {
+  const intervals: Interval[] = sessions
+    .map((s) => ({
+      start: Date.parse(s.startedAt),
+      end: Date.parse(s.endedAt ?? s.lastSeenActive),
+    }))
+    .filter((i) => Number.isFinite(i.start) && Number.isFinite(i.end));
+
+  const compression = computeCompression(intervals);
+
+  let totalCost = 0;
+  let totalInput = 0;
+  let totalOutput = 0;
+  let totalCacheRead = 0;
+  let totalCacheWrite = 0;
+  const byProjectMap = new Map<ProjectId, { durationMs: number; costUsd: number; sessionCount: number }>();
+  for (const s of sessions) {
+    totalCost += s.costUsd;
+    totalInput += s.inputTokens;
+    totalOutput += s.outputTokens;
+    totalCacheRead += s.cacheReadTokens;
+    totalCacheWrite += s.cacheWriteTokens;
+    const existing = byProjectMap.get(s.project) ?? { durationMs: 0, costUsd: 0, sessionCount: 0 };
+    existing.durationMs += s.durationMs;
+    existing.costUsd += s.costUsd;
+    existing.sessionCount += 1;
+    byProjectMap.set(s.project, existing);
+  }
+  const byProject: ProjectAggregate[] = Array.from(byProjectMap.entries())
+    .map(([project, agg]) => ({ project, ...agg }))
+    .sort((a, b) => b.costUsd - a.costUsd);
+  const cacheDisciplineRatio = totalCacheWrite > 0 ? totalCacheRead / totalCacheWrite : 0;
+
+  return {
+    date,
+    sessions,
+    byProject,
+    sessionContextMs: compression.sessionContextMs,
+    wallClockWindowMs: compression.wallClockWindowMs,
+    compressionRatio: compression.ratio,
+    totalCostUsd: totalCost,
+    inputTokens: totalInput,
+    outputTokens: totalOutput,
+    cacheReadTokens: totalCacheRead,
+    cacheWriteTokens: totalCacheWrite,
+    cacheDisciplineRatio,
+  };
+}

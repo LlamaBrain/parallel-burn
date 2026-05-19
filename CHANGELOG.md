@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-19
+
+The metrics layer. With the data plane in place from 0.1.0, this release
+adds the math that turns raw `MessageEvent`s into the spec's headline
+numbers: compression ratio, cache discipline, streak, and per-project
+breakdowns.
+
+### Added
+
+- `src/core/compression.ts` — `mergeIntervals` (sort-then-fold,
+  zero/negative-duration intervals discarded), `totalIntervalDurationMs`,
+  `compressionRatio`, and `computeCompression` (one-shot helper). The
+  wall-clock window is the *merged* duration, not naive
+  `max(end) - min(start)` — the SPEC §10 Phase 4 requirement.
+- `src/core/streak.ts` — `computeStreak` walks calendar dates backward from
+  `today`, counting consecutive days at or above a configurable
+  threshold. Default $50 retail per SPEC §8. Missing days count as $0,
+  which breaks the streak (unless the threshold is also 0). UTC-only
+  date arithmetic; `previousDay` handles month / year / leap-day
+  boundaries correctly.
+- `src/core/aggregator.ts` — the bridge between the data plane and the
+  presentation layer. `summarizeSession` (pure, given manifest + events
+  + pricing), `aggregateFromManifest` (loads the transcript),
+  `aggregateSession` (loads manifest + transcript), `listSessions`
+  (directory walk over `~/.parallel-burn/data/sessions/`), and
+  `aggregateDay` (filter by `started_at` date, fan out, roll up).
+  `rollUpDay` is pure: takes `SessionAggregate[]` and produces a
+  `DailyAggregate` with the merged-interval compression math, by-project
+  groups (sorted by cost desc), and the cache discipline ratio.
+  Injection points (`sessionsDir`, `metaPathFor`, `readTranscriptFor`)
+  exist for tests; the production code uses defaults that resolve via
+  `src/core/paths.ts`.
+- 48 new Vitest tests across `compression`, `streak`, and `aggregator`.
+  **158 tests total. 100 % statement / function / line coverage on every
+  file in `src/core/` (eleven modules).** Branch coverage is 100 % on
+  every module except `aggregator.ts` at 91.66 %, where the remaining
+  uncovered branches are option-defaulting `??` paths whose default
+  arms *are* exercised — the noise is a known v8-coverage limitation.
+
+### Changed
+
+- `package.json` and `plugin.json` version → `0.2.0`.
+
+### Verified
+
+- `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean.
+- **End-to-end smoke test against the live in-progress session on the
+  author's machine:** 282 assistant turns parsed from the transcript,
+  $153.46 retail cost computed against `pricing.json`, cache discipline
+  ratio of 34.86 — the cache is doing real work, exactly the kind of
+  number the product is built to surface.
+
+[0.2.0]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.2.0
+
 ## [0.1.0] — 2026-05-19
 
 First feature release. ParallelBurn can now observe a Claude Code session
@@ -180,5 +234,5 @@ machine.
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.2.0...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1
