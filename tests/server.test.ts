@@ -8,9 +8,11 @@ import { startServer, type ServerHandle } from "../src/server/server.js";
 
 let tmp: string;
 let pricingPath: string;
+let sessionsDir: string;
 beforeEach(async () => {
   tmp = await mkdtemp(join(tmpdir(), "parallel-burn-server-"));
   pricingPath = join(tmp, "pricing.json");
+  sessionsDir = join(tmp, "sessions");
   await writeFile(
     pricingPath,
     JSON.stringify({
@@ -43,6 +45,7 @@ async function withServer<T>(
     pricingFile: pricingPath,
     subscriptionDailyUsd: 6.67,
     dailyStreakThresholdUsd: 50,
+    sessionsDir,
   });
   try {
     return await fn(handle);

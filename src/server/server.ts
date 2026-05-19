@@ -13,15 +13,22 @@
 
 import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
-import { aggregateDay, type DailyAggregate, listSessions, summarizeSession } from "../core/aggregator.js";
-import { computeStreak, dateOf } from "../core/streak.js";
+import { aggregateDay, type DailyAggregate } from "../core/aggregator.js";
+import {
+  computeActiveStreak,
+  computeLongestActiveStreak,
+  readStatsCache,
+} from "../core/claude-stats.js";
+import { dateOf } from "../core/streak.js";
 import { PricingProvider } from "../core/pricing.js";
-import { readTranscript } from "../core/transcript.js";
 import { OVERLAY_HTML } from "./overlay.js";
 
 const LOCALHOST = "127.0.0.1";
 const SSE_HEARTBEAT_MS = 15_000;
-const POLL_INTERVAL_MS = 5_000;
+/** Fast-path poll: today's aggregate (small, cheap). */
+const TODAY_POLL_INTERVAL_MS = 15_000;
+/** Slow-path refresh: re-read Claude Code's stats cache for the streak. */
+const STREAK_REFRESH_INTERVAL_MS = 5 * 60_000;
 const HTTP_OK = 200;
 const HTTP_REDIRECT = 302;
 const HTTP_NOT_FOUND = 404;
@@ -31,6 +38,9 @@ export type ServerConfig = {
   readonly pricingFile: string;
   readonly subscriptionDailyUsd: number;
   readonly dailyStreakThresholdUsd: number;
+  /** Override the on-disk sessions directory. Production code uses the
+      default (`~/.parallel-burn/data/sessions/`); tests pass a tmp path. */
+  readonly sessionsDir?: string;
 };
 
 export type ServerHandle = {
@@ -42,44 +52,97 @@ export type ServerHandle = {
 export type LiveSnapshot = {
   readonly date: string;
   readonly aggregate: DailyAggregate;
+  /** Active-day streak ending today, matching Claude Code's /stats view. */
   readonly streak: number;
+  /** Longest active-day streak ever observed in Claude Code's stats cache. */
+  readonly longestStreak: number;
   readonly subsidyMultiplier: number;
   readonly pricingAsOf: string;
   readonly pricingStale: boolean;
 };
 
+/**
+ * Build the full snapshot in one shot. Useful for the initial population
+ * and for one-off HTTP `/api/today` requests when no cached state is
+ * available. Reads 1–N transcripts (today) plus consults Claude Code's
+ * stats cache for the active-day streak.
+ */
 export async function buildSnapshot(config: ServerConfig): Promise<LiveSnapshot> {
   const pricing = await PricingProvider.fromFile(config.pricingFile);
   const today = dateOf(new Date().toISOString());
-  const aggregate = await aggregateDay(today, pricing);
-
-  // Last 60 days of daily costs, to compute the streak.
-  const dailyCostUsd = new Map<string, number>();
-  const sessions = await listSessions();
-  for (const m of sessions) {
-    let events: Awaited<ReturnType<typeof readTranscript>> = [];
-    try {
-      events = await readTranscript(m.transcript_path);
-    } catch {
-      events = [];
-    }
-    const s = summarizeSession(m, events, pricing);
-    const d = dateOf(s.startedAt);
-    dailyCostUsd.set(d, (dailyCostUsd.get(d) ?? 0) + s.costUsd);
-  }
-  // Make sure today is in the map even if no sessions yet.
-  if (!dailyCostUsd.has(today)) dailyCostUsd.set(today, aggregate.totalCostUsd);
-  const streak = computeStreak(dailyCostUsd, today, config.dailyStreakThresholdUsd);
-
+  const aggregatorOptions = config.sessionsDir !== undefined
+    ? { sessionsDir: config.sessionsDir }
+    : {};
+  const aggregate = await aggregateDay(today, pricing, aggregatorOptions);
+  const streakSnapshot = await computeStreakFromClaudeStats(today, aggregate);
   const subsidyMultiplier =
     config.subscriptionDailyUsd > 0
       ? aggregate.totalCostUsd / config.subscriptionDailyUsd
       : 0;
-
   return {
     date: today,
     aggregate,
-    streak,
+    streak: streakSnapshot.current,
+    longestStreak: streakSnapshot.longest,
+    subsidyMultiplier,
+    pricingAsOf: pricing.asOf,
+    pricingStale: pricing.isStale(),
+  };
+}
+
+/**
+ * Compute current + longest active-day streak from Claude Code's stats
+ * cache, with today stamped active if our own aggregator confirms
+ * sessions today (the cache lags one day — `lastComputedDate` is always
+ * yesterday or older).
+ *
+ * Returns zero streaks (and falls through transparently) if the cache
+ * is missing or unparseable — the server keeps running, the overlay
+ * just shows `0d`.
+ */
+async function computeStreakFromClaudeStats(
+  today: string,
+  aggregate: DailyAggregate,
+): Promise<{ current: number; longest: number }> {
+  const cache = await readStatsCache();
+  if (cache === null) return { current: 0, longest: 0 };
+  const todayHasActivity = aggregate.sessions.length > 0;
+  return {
+    current: computeActiveStreak(today, cache.dailyActivity, todayHasActivity),
+    longest: computeLongestActiveStreak(cache.dailyActivity, today, todayHasActivity),
+  };
+}
+
+/**
+ * Fast-path: compute today's snapshot using cached streak numbers. The
+ * streak cache is refreshed by the slow tick on its own schedule; here
+ * we only re-aggregate today's sessions, which is cheap.
+ */
+async function buildTodaySnapshot(
+  config: ServerConfig,
+  cachedStreak: { current: number; longest: number },
+): Promise<LiveSnapshot> {
+  const pricing = await PricingProvider.fromFile(config.pricingFile);
+  const today = dateOf(new Date().toISOString());
+  const aggregatorOptions = config.sessionsDir !== undefined
+    ? { sessionsDir: config.sessionsDir }
+    : {};
+  const aggregate = await aggregateDay(today, pricing, aggregatorOptions);
+  // Re-stamp the streak's "today active" flag from this poll's data —
+  // if a session just started, today becomes active immediately even
+  // before the slow tick refreshes.
+  const liveStreak = aggregate.sessions.length > 0
+    ? { current: Math.max(cachedStreak.current, cachedStreak.current === 0 ? 1 : 0), longest: cachedStreak.longest }
+    : cachedStreak;
+  const subsidyMultiplier =
+    config.subscriptionDailyUsd > 0
+      ? aggregate.totalCostUsd / config.subscriptionDailyUsd
+      : 0;
+  return {
+    date: today,
+    aggregate,
+    streak: liveStreak.current,
+    longestStreak: liveStreak.longest,
     subsidyMultiplier,
     pricingAsOf: pricing.asOf,
     pricingStale: pricing.isStale(),
@@ -90,19 +153,35 @@ export async function startServer(config: ServerConfig): Promise<ServerHandle> {
   const overlayHtml = OVERLAY_HTML;
 
   const sseClients = new Set<ServerResponse>();
-  let pollTimer: NodeJS.Timeout | null = null;
+  let fastTimer: NodeJS.Timeout | null = null;
+  let slowTimer: NodeJS.Timeout | null = null;
   let lastSnapshotJson: string | null = null;
+  let cachedStreak: { current: number; longest: number } = { current: 0, longest: 0 };
 
-  async function pushIfChanged(): Promise<void> {
+  async function refreshStreakCache(): Promise<void> {
     try {
-      const snap = await buildSnapshot(config);
+      const today = dateOf(new Date().toISOString());
+      const aggregatorOptions = config.sessionsDir !== undefined
+        ? { sessionsDir: config.sessionsDir }
+        : {};
+      const pricing = await PricingProvider.fromFile(config.pricingFile);
+      const aggregate = await aggregateDay(today, pricing, aggregatorOptions);
+      cachedStreak = await computeStreakFromClaudeStats(today, aggregate);
+    } catch {
+      // Keep the previous cache — better stale data than nothing.
+    }
+  }
+
+  async function pushTodayIfChanged(): Promise<void> {
+    try {
+      const snap = await buildTodaySnapshot(config, cachedStreak);
       const json = JSON.stringify(snap);
       if (json !== lastSnapshotJson) {
         lastSnapshotJson = json;
         broadcastSse(sseClients, json);
       }
     } catch {
-      // Suppress — keep the server alive even if a single tick fails.
+      // Keep the server alive even if a single tick fails.
     }
   }
 
@@ -111,6 +190,7 @@ export async function startServer(config: ServerConfig): Promise<ServerHandle> {
       config,
       overlayHtml,
       sseClients,
+      getLatestSnapshotJson: () => lastSnapshotJson,
       onClientSubscribed: () => {
         if (lastSnapshotJson !== null) {
           sendSseEvent(res, lastSnapshotJson);
@@ -132,19 +212,34 @@ export async function startServer(config: ServerConfig): Promise<ServerHandle> {
     });
   });
 
-  // Initial snapshot + recurring poll.
-  await pushIfChanged();
-  pollTimer = setInterval(() => {
-    void pushIfChanged();
-  }, POLL_INTERVAL_MS);
+  // Kick off the initial snapshot in the background. HTTP requests start
+  // accepting *immediately* — early requests may see an empty snapshot
+  // (the GET endpoint computes one fresh on demand), but the SSE
+  // broadcast starts as soon as the first slow refresh completes.
+  setImmediate(() => {
+    void (async (): Promise<void> => {
+      await refreshStreakCache();
+      await pushTodayIfChanged();
+    })();
+  });
+  fastTimer = setInterval(() => {
+    void pushTodayIfChanged();
+  }, TODAY_POLL_INTERVAL_MS);
+  slowTimer = setInterval(() => {
+    void refreshStreakCache();
+  }, STREAK_REFRESH_INTERVAL_MS);
 
   return {
     server,
     url: `http://${LOCALHOST}:${String(config.port)}`,
     async close() {
-      if (pollTimer !== null) {
-        clearInterval(pollTimer);
-        pollTimer = null;
+      if (fastTimer !== null) {
+        clearInterval(fastTimer);
+        fastTimer = null;
+      }
+      if (slowTimer !== null) {
+        clearInterval(slowTimer);
+        slowTimer = null;
       }
       for (const client of sseClients) {
         client.end();
@@ -161,9 +256,11 @@ type RequestContext = {
   readonly config: ServerConfig;
   readonly overlayHtml: string;
   readonly sseClients: Set<ServerResponse>;
+  getLatestSnapshotJson(): string | null;
   onClientSubscribed(): void;
 };
 
+// eslint-disable-next-line @typescript-eslint/require-await -- caller uses .catch on the returned promise; future endpoints may legitimately await.
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -185,12 +282,16 @@ async function handleRequest(
     return;
   }
   if (url === "/api/today" || url === "/api/current") {
-    const snap = await buildSnapshot(ctx.config);
+    // Always return the cached snapshot. If the cache is still cold
+    // (server just booted, background refresh in flight), return a
+    // zeroed placeholder rather than block. Consumers (overlay,
+    // statusline) handle the empty case gracefully.
+    const cached = ctx.getLatestSnapshotJson() ?? emptySnapshotJson();
     res.writeHead(HTTP_OK, {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
     });
-    res.end(JSON.stringify(snap));
+    res.end(cached);
     return;
   }
   if (url === "/events") {
@@ -231,6 +332,33 @@ function handleSse(req: IncomingMessage, res: ServerResponse, ctx: RequestContex
 function sendSseEvent(res: ServerResponse, json: string): void {
   if (res.writableEnded) return;
   res.write(`data: ${json}\n\n`);
+}
+
+function emptySnapshotJson(): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return JSON.stringify({
+    date: today,
+    aggregate: {
+      date: today,
+      sessions: [],
+      byProject: [],
+      sessionContextMs: 0,
+      wallClockWindowMs: 0,
+      compressionRatio: 0,
+      totalCostUsd: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      cacheDisciplineRatio: 0,
+    },
+    streak: 0,
+    longestStreak: 0,
+    subsidyMultiplier: 0,
+    pricingAsOf: "",
+    pricingStale: false,
+    warming: true,
+  });
 }
 
 function broadcastSse(clients: ReadonlySet<ServerResponse>, json: string): void {

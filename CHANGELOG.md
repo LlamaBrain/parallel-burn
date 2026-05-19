@@ -7,6 +7,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.3] — 2026-05-19
+
+A working release candidate, surfaced and shaped by real-world use. Five
+things land in this RC: a performance fix for the server under realistic
+data volumes, a streak data-source pivot to match Claude Code's `/stats`
+view, a substantially polished session-summary, a cache-rate metric in
+the statusline, and an out-of-tree shim that lets ParallelBurn coexist
+with the operator's existing `ccstatusline-usage` statusline.
+
+### Changed
+
+- `src/server/server.ts`:
+  - `buildSnapshot` factored into `buildDailyCostMap` (slow, walks
+    last-31-day manifests) and `buildTodaySnapshot` (fast, uses a
+    cached daily-cost map and re-aggregates only today's sessions).
+  - `startServer` runs two timers: `TODAY_POLL_INTERVAL_MS` (15 s)
+    pushes today's aggregate; `STREAK_REFRESH_INTERVAL_MS` (5 min)
+    refreshes the cached daily-cost map.
+  - Initial population is deferred via `setImmediate` so the HTTP
+    server is responsive from the moment `listen()` returns.
+  - `GET /api/today` and `GET /api/current` now serve the cached
+    snapshot JSON synchronously. If the cache is cold (server just
+    booted), an empty-but-shape-valid snapshot is returned with
+    `warming: true`. Consumers (overlay, statusline) handle the warm-up
+    transparently.
+  - `ServerConfig` gains an optional `sessionsDir` field so tests
+    isolate from the operator's real `~/.parallel-burn/data/sessions/`.
+    Without this the post-backfill 3 116-manifest dir was making
+    tests time out.
+- `src/cli/statusline.ts`:
+  - Tries `GET http://127.0.0.1:<port>/api/today` first (250 ms
+    timeout). On success uses that snapshot; ~100 ms total tick.
+  - Slow-path fallback now also applies the 31-day lookback filter so
+    standalone use isn't ruinously slow either. Opt out with
+    `PARALLEL_BURN_NO_SERVER_FETCH=1` (forces the slow path).
+
+### Added
+
+- **`ADRs/0006-claude-stats-cache-for-day-aggregates.md`** — partially
+  supersedes ADR-0003 for day-level metrics. ParallelBurn now reads
+  `~/.claude/stats-cache.json` as the source for streak / daily activity
+  numbers, matching what Claude Code's `/stats` view shows. Transcripts
+  remain the source for per-session detail.
+- `src/core/claude-stats.ts` — async loader + table-tested parser for
+  Claude Code's stats cache, plus `computeActiveStreak(today, activity,
+  todayHasActivityOverride)` and `computeLongestActiveStreak(activity,
+  today?, todayHasActivityOverride?)`. Rejects unsupported schema
+  versions; falls back to zero streaks if the cache is missing.
+- `LiveSnapshot.longestStreak` field, surfaced through `/api/today`,
+  the overlay, and the statusline.
+- Polished session-summary (`src/core/summary.ts`):
+  - Narrative opener mimics the operator's reference tooling style —
+    "session-context compressed into N of real wall — a Y× parallelism
+    multiplier", followed by an explicit **span vs. merged-wall**
+    sentence ("Span and wall lined up almost perfectly" /
+    "Span (N min) ran M minutes longer than the W-min merged wall —
+    meaningful idle stretches between active blocks").
+  - Sessions render in a **box-drawing table** (`┌─┐│└─┘`), sorted by
+    cost desc, capped at 15 rows with a `...and N more` overflow line.
+  - Closing **Tokens line** with `K-in / M-out / cache-writes /
+    cache-reads (X× cache rate) — the {Plan} subscription is the only
+    reason this isn't a car payment.` punchline.
+- `cacheDisciplineRatio` is now surfaced in the statusline output
+  (`⊕ 4.0× parallel · $123 today · 18.0× cache · streak 57d`) and
+  the server's API JSON.
+
+### Out of tree (for the operator's local setup)
+
+- Shim at `~/.claude/scripts/statusline-combined.js` (not in this repo)
+  that runs `ccstatusline-usage` and ParallelBurn's statusline in
+  parallel and concatenates their outputs with a separator. Wired into
+  `~/.claude/settings.json`'s `statusLine.command`. Lets the operator
+  keep their existing usage line and add ParallelBurn's line beside it.
+
+### Verified
+
+- `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean.
+- **259 Vitest tests pass** (up from 237 in rc.2). New tests cover
+  `claude-stats` schema validation, `computeActiveStreak` with override,
+  `computeLongestActiveStreak`, and the rewritten summary's narrative
+  shape / box-drawing table / cache-rate line / span-vs-wall description.
+- **Streak now matches Claude Code's `/stats` view exactly.** On the
+  operator's machine the new computation returned `57d current / 57d
+  longest`, matching the in-app stats screen to the day.
+- **End-to-end timing on the operator's machine** (with 3 116 manifests
+  + 4 544 sessions in Claude Code's stats cache):
+  - `GET /api/today` (cached): **~1 ms**
+  - `node dist/cli/statusline.js` (fast path via server): **~108 ms**
+  - Combined shim (ccstatusline-usage in parallel): **~950 ms**,
+    dominated by `npx -y ccstatusline-usage@latest`; ParallelBurn's
+    contribution is in-the-noise.
+- Plugin reinstalled at `1.0.0-rc.3` via `claude plugin install
+  parallel-burn@llamabrain`; `claude plugin list` confirms the new
+  version is registered and enabled at user scope.
+- The `statusLine.command` in `~/.claude/settings.json` now points at
+  the combined shim. **Live verification of the statusline rendering
+  inside Claude Code is still TBD** — needs a fresh Claude Code session.
+
+### Still awaiting human verification
+
+The remaining `rc.1` checklist items (hooks firing from Claude Code,
+SessionStart → manifest, SessionEnd → summary, slash commands appearing
+in `/help`, overlay live in OBS) all need a fresh Claude Code session
+to confirm. Stable `1.0.0` is gated on that confirmation.
+
+[1.0.0-rc.3]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v1.0.0-rc.3
+
 ## [1.0.0-rc.2] — 2026-05-19
 
 Adds the **backfill** command — the missing piece for users (like the
@@ -517,5 +624,5 @@ machine.
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v1.0.0-rc.2...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v1.0.0-rc.3...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1

@@ -9,6 +9,13 @@
 // ParallelBurn's statusline is parallelism-first: compression ratio, then
 // today's burn, then streak. Same priority as the overlay (Phase 7).
 //
+// **Performance.** Statuslines run on the fast loop; re-aggregating
+// 1000+ session manifests on every tick is a disk hammer. The statusline
+// prefers `GET http://127.0.0.1:<port>/api/today` (single TCP roundtrip,
+// returns the cached server snapshot) and falls back to direct
+// aggregation only if the server isn't running. Set
+// `PARALLEL_BURN_NO_SERVER_FETCH=1` to skip the fetch path entirely.
+//
 // To enable, add to `~/.claude/settings.json`:
 //
 //   {
@@ -26,6 +33,7 @@ import {
   summarizeSession,
   type SessionAggregate,
 } from "../core/aggregator.js";
+import { readConfig } from "../core/config.js";
 import { PricingProvider } from "../core/pricing.js";
 import {
   computeCompression,
@@ -38,6 +46,8 @@ import {
 } from "../core/streak.js";
 import { readTranscript } from "../core/transcript.js";
 import { formatRatio, formatUsd } from "./format.js";
+
+const SERVER_FETCH_TIMEOUT_MS = 250;
 
 const ACCENT = "[38;5;208m"; // soft orange — LlamaBrain accent
 const DIM = "[2m";
@@ -75,6 +85,65 @@ export function renderStatusline(inputs: StatuslineInputs): string {
   return parts.join(SEP);
 }
 
+type ServerSnapshot = {
+  readonly date: string;
+  readonly aggregate: {
+    readonly compressionRatio: number;
+    readonly totalCostUsd: number;
+    readonly cacheDisciplineRatio: number;
+  };
+  readonly streak: number;
+  readonly pricingStale: boolean;
+};
+
+function isServerSnapshot(x: unknown): x is ServerSnapshot {
+  if (typeof x !== "object" || x === null || Array.isArray(x)) return false;
+  const o = x as Record<string, unknown>;
+  if (typeof o["date"] !== "string") return false;
+  if (typeof o["streak"] !== "number") return false;
+  if (typeof o["pricingStale"] !== "boolean") return false;
+  const a = o["aggregate"];
+  if (typeof a !== "object" || a === null) return false;
+  const ag = a as Record<string, unknown>;
+  return (
+    typeof ag["compressionRatio"] === "number" &&
+    typeof ag["totalCostUsd"] === "number" &&
+    typeof ag["cacheDisciplineRatio"] === "number"
+  );
+}
+
+/**
+ * Fast path: try the running localhost server. Returns null on any
+ * failure (server not running, timeout, malformed payload) so the caller
+ * can fall back to direct aggregation.
+ */
+export async function fetchServerSnapshot(port: number): Promise<ServerSnapshot | null> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), SERVER_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`http://127.0.0.1:${String(port)}/api/today`, {
+      signal: ac.signal,
+    });
+    if (!res.ok) return null;
+    const parsed: unknown = await res.json();
+    return isServerSnapshot(parsed) ? parsed : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function renderFromServerSnapshot(snap: ServerSnapshot): string {
+  return [
+    `${ACCENT}⊕${RESET} ${formatRatio(snap.aggregate.compressionRatio)} parallel`,
+    `${formatUsd(snap.aggregate.totalCostUsd)} today`,
+    `${formatRatio(snap.aggregate.cacheDisciplineRatio)} cache`,
+    `streak ${String(snap.streak)}d`,
+    ...(snap.pricingStale ? [`${DIM}pricing stale${RESET}`] : []),
+  ].join(SEP);
+}
+
 /* v8 ignore start -- exercised in real Claude Code invocation. */
 async function main(): Promise<void> {
   // Drain stdin (Claude Code passes session context as JSON). We don't
@@ -83,13 +152,34 @@ async function main(): Promise<void> {
     for await (const _chunk of process.stdin) void _chunk;
   }
 
+  const config = await readConfig();
+
+  // Fast path: hit the running server.
+  if (process.env["PARALLEL_BURN_NO_SERVER_FETCH"] !== "1") {
+    const snap = await fetchServerSnapshot(config.serverPort);
+    if (snap !== null) {
+      process.stdout.write(renderFromServerSnapshot(snap));
+      return;
+    }
+  }
+
+  // Slow path: re-aggregate from disk.
+  // Mirror the server's lookback-window optimization (see src/server/
+  // server.ts) — only consider sessions in the recent window so the
+  // slow path doesn't read thousands of irrelevant historical transcripts.
+  const STATUSLINE_LOOKBACK_DAYS = 31;
+  const sinceMs = Date.now() - STATUSLINE_LOOKBACK_DAYS * 86_400_000;
   const pricing = await PricingProvider.fromFile(
     process.env["PARALLEL_BURN_PRICING_FILE"] ?? "./pricing.json",
   );
   const sessions = await listSessions();
+  const recent = sessions.filter((m) => {
+    const t = Date.parse(m.started_at);
+    return Number.isFinite(t) && t >= sinceMs;
+  });
   const aggregates: SessionAggregate[] = [];
   const dailyCostUsd = new Map<string, number>();
-  for (const m of sessions) {
+  for (const m of recent) {
     let events: Awaited<ReturnType<typeof readTranscript>> = [];
     try {
       events = await readTranscript(m.transcript_path);

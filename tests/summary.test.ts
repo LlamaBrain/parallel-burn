@@ -98,12 +98,10 @@ describe("renderSessionSummary", () => {
       ]),
       subscriptionDailyUsd: 6.67,
     });
-    // The opening line must contain the exact narrative phrases.
-    expect(md).toContain("of session-context squeezed into");
+    expect(md).toContain("of session-context compressed into");
     expect(md).toContain("parallelism multiplier");
-    expect(md).toContain("list-price across");
-    expect(md).toContain("Max-prorated daily");
-    expect(md).toContain("Cache reads cleared");
+    expect(md).toContain("daily prorated Max subscription");
+    expect(md).toContain("cache reads doing most of the actual labor");
   });
 
   it("computes subsidy multiplier against the supplied subscription rate", () => {
@@ -120,7 +118,7 @@ describe("renderSessionSummary", () => {
       ]),
       subscriptionDailyUsd: 6.67,
     });
-    expect(md).toContain("5.0× the Max-prorated daily");
+    expect(md).toContain("5× the daily prorated Max subscription");
   });
 
   it("uses a custom plan label when supplied", () => {
@@ -138,22 +136,23 @@ describe("renderSessionSummary", () => {
       subscriptionDailyUsd: 0.67,
       planLabel: "Pro",
     });
-    expect(md).toContain("Pro-prorated daily");
+    expect(md).toContain("daily prorated Pro subscription");
   });
 
-  it("renders a markdown table of sessions sorted by start time", () => {
+  it("renders a box-drawing session table sorted by cost desc", () => {
+    // The session-table column shows the last 8 chars of each session ID.
     const md = renderSessionSummary({
       date: "2026-05-19",
       aggregate: aggregate([
         exampleSession({
-          id: "later",
+          id: "session-cheaplate",
           project: "p",
           startedAt: "2026-05-19T11:00:00Z",
           endedAt: "2026-05-19T12:00:00Z",
           costUsd: 10,
         }),
         exampleSession({
-          id: "earlier",
+          id: "session-bigearly",
           project: "p",
           startedAt: "2026-05-19T09:00:00Z",
           endedAt: "2026-05-19T10:00:00Z",
@@ -162,11 +161,14 @@ describe("renderSessionSummary", () => {
       ]),
       subscriptionDailyUsd: 6.67,
     });
-    const earlierIdx = md.indexOf("earlier");
-    const laterIdx = md.indexOf("later");
-    expect(earlierIdx).toBeGreaterThan(-1);
-    expect(laterIdx).toBeGreaterThan(earlierIdx);
-    expect(md).toContain("| Duration | Cost |");
+    // shortSession returns the LAST 8 chars of the session id.
+    const bigIdx = md.indexOf("bigearly"); // last 8 of "session-bigearly"
+    const cheapIdx = md.indexOf("heaplate"); // last 8 of "session-cheaplate"
+    expect(bigIdx).toBeGreaterThan(-1);
+    expect(cheapIdx).toBeGreaterThan(bigIdx);
+    expect(md).toContain("┌");
+    expect(md).toContain("│ Duration │");
+    expect(md).toContain("└");
   });
 
   it("renders a per-project rollup section", () => {
@@ -195,81 +197,7 @@ describe("renderSessionSummary", () => {
     expect(md).toContain("- other:");
   });
 
-  it("closes with an interpretation sentence keyed to compression ratio", () => {
-    const heavy = renderSessionSummary({
-      date: "2026-05-19",
-      aggregate: aggregate(
-        [
-          exampleSession({
-            id: "a",
-            project: "p",
-            startedAt: "2026-05-19T10:00:00Z",
-            endedAt: "2026-05-19T11:00:00Z",
-            costUsd: 5,
-          }),
-        ],
-        5.2,
-      ),
-      subscriptionDailyUsd: 6.67,
-    });
-    expect(heavy).toContain("heavy parallel workday");
-
-    const mid = renderSessionSummary({
-      date: "2026-05-19",
-      aggregate: aggregate(
-        [
-          exampleSession({
-            id: "a",
-            project: "p",
-            startedAt: "2026-05-19T10:00:00Z",
-            endedAt: "2026-05-19T11:00:00Z",
-            costUsd: 5,
-          }),
-        ],
-        2.5,
-      ),
-      subscriptionDailyUsd: 6.67,
-    });
-    expect(mid).toContain("comfortably parallel");
-
-    const low = renderSessionSummary({
-      date: "2026-05-19",
-      aggregate: aggregate(
-        [
-          exampleSession({
-            id: "a",
-            project: "p",
-            startedAt: "2026-05-19T10:00:00Z",
-            endedAt: "2026-05-19T11:00:00Z",
-            costUsd: 5,
-          }),
-        ],
-        1.2,
-      ),
-      subscriptionDailyUsd: 6.67,
-    });
-    expect(low).toContain("some overlap");
-
-    const serial = renderSessionSummary({
-      date: "2026-05-19",
-      aggregate: aggregate(
-        [
-          exampleSession({
-            id: "a",
-            project: "p",
-            startedAt: "2026-05-19T10:00:00Z",
-            endedAt: "2026-05-19T11:00:00Z",
-            costUsd: 5,
-          }),
-        ],
-        1.0,
-      ),
-      subscriptionDailyUsd: 6.67,
-    });
-    expect(serial).toContain("Strictly serial day");
-  });
-
-  it("emits a sensible token-mix description", () => {
+  it("closes with a tokens line including cache rate and the punchline", () => {
     const md = renderSessionSummary({
       date: "2026-05-19",
       aggregate: aggregate([
@@ -278,36 +206,45 @@ describe("renderSessionSummary", () => {
           project: "p",
           startedAt: "2026-05-19T10:00:00Z",
           endedAt: "2026-05-19T11:00:00Z",
-          costUsd: 1,
+          costUsd: 5,
           inputTokens: 100,
           outputTokens: 200,
           cacheReadTokens: 600,
-          cacheWriteTokens: 100,
+          cacheWriteTokens: 60,
         }),
       ]),
       subscriptionDailyUsd: 6.67,
     });
-    expect(md).toMatch(/~\d+% output, ~\d+% cache/);
+    expect(md).toContain("Tokens:");
+    expect(md).toContain(" in / ");
+    expect(md).toContain(" out / ");
+    expect(md).toContain("cache writes");
+    expect(md).toContain("cache reads");
+    expect(md).toContain("× cache rate");
+    expect(md).toContain("only reason this isn't a car payment");
   });
 
-  it("handles zero-token sessions without dividing by zero", () => {
+  it("falls back to 'no cache yet' when cache discipline is 0", () => {
     const md = renderSessionSummary({
       date: "2026-05-19",
-      aggregate: aggregate([
-        exampleSession({
-          id: "a",
-          project: "p",
-          startedAt: "2026-05-19T10:00:00Z",
-          endedAt: "2026-05-19T11:00:00Z",
-          costUsd: 0,
-        }),
-      ]),
+      aggregate: {
+        ...aggregate([
+          exampleSession({
+            id: "a",
+            project: "p",
+            startedAt: "2026-05-19T10:00:00Z",
+            endedAt: "2026-05-19T11:00:00Z",
+            costUsd: 0,
+          }),
+        ]),
+        cacheDisciplineRatio: 0,
+      },
       subscriptionDailyUsd: 6.67,
     });
-    expect(md).toContain("no measured tokens");
+    expect(md).toContain("no cache yet");
   });
 
-  it("uses fallback subsidy display when subscription_daily_usd is 0", () => {
+  it("uses the fallback subsidy placeholder when subscription_daily_usd is 0", () => {
     const md = renderSessionSummary({
       date: "2026-05-19",
       aggregate: aggregate([
@@ -321,7 +258,58 @@ describe("renderSessionSummary", () => {
       ]),
       subscriptionDailyUsd: 0,
     });
-    expect(md).toContain("— the Max-prorated daily");
+    expect(md).toContain("— the daily prorated");
+  });
+
+  it("describes a single-stretch day when span ≈ wall", () => {
+    const md = renderSessionSummary({
+      date: "2026-05-19",
+      aggregate: {
+        ...aggregate([
+          exampleSession({
+            id: "a",
+            project: "p",
+            startedAt: "2026-05-19T10:00:00Z",
+            endedAt: "2026-05-19T11:00:00Z",
+            costUsd: 5,
+          }),
+        ]),
+        sessionContextMs: 60 * 60 * 1000,
+        wallClockWindowMs: 60 * 60 * 1000, // wall ≈ span
+        compressionRatio: 1.0,
+      },
+      subscriptionDailyUsd: 6.67,
+    });
+    expect(md).toContain("lined up almost perfectly");
+  });
+
+  it("describes meaningful idle stretches when span ≫ wall", () => {
+    const md = renderSessionSummary({
+      date: "2026-05-19",
+      aggregate: {
+        ...aggregate([
+          exampleSession({
+            id: "early",
+            project: "p",
+            startedAt: "2026-05-19T09:00:00Z",
+            endedAt: "2026-05-19T10:00:00Z",
+            costUsd: 5,
+          }),
+          exampleSession({
+            id: "late",
+            project: "p",
+            startedAt: "2026-05-19T15:00:00Z",
+            endedAt: "2026-05-19T16:00:00Z",
+            costUsd: 5,
+          }),
+        ]),
+        sessionContextMs: 2 * 60 * 60 * 1000,
+        wallClockWindowMs: 2 * 60 * 60 * 1000, // 2h merged
+        // span 9-16 = 7h, wall 2h → big gap
+      },
+      subscriptionDailyUsd: 6.67,
+    });
+    expect(md).toContain("idle stretches");
   });
 });
 

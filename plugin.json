@@ -1,6 +1,6 @@
 {
   "name": "parallel-burn",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "description": "Surfaces parallelism, cache discipline, and retail-price cost from your Claude Code sessions. Localhost overlay for OBS browser-source rendering.",
   "displayName": "ParallelBurn",
   "author": {
