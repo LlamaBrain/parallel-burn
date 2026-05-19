@@ -6,21 +6,19 @@ You are working on ParallelBurn, a Claude Code plugin. This file is the *ongoing
 
 ## Current phase
 
-Phase 0 (skeleton) — **complete**. The skeleton includes:
+Phase 0 (skeleton) — **complete** at `v0.0.1`.
+Phase 1 (typed IDs + pricing infrastructure) — **complete** at `v0.0.2`.
 
-- Full top-level scaffold (`package.json`, `tsconfig.json`, `plugin.json`, `eslint.config.js`, `pricing.json`, `.gitignore`, `LICENSE`, `README.md`, `CHANGELOG.md`, `CLAUDE.md`, `SPEC.md`).
-- ADRs/0001 (Architecture Overview), ADRs/0002 (Per-Session JSONL Storage), ADRs/0003 (PostToolUse delivers no usage; we read transcripts instead — a real correction to SPEC.md §9.1).
+Phase 2 (cost calculator) — **next**.
 
-Phase 1 (typed IDs + pricing infrastructure) — **next**.
+### Begin Phase 2 by
 
-### Begin Phase 1 by
-
-1. Re-reading SPEC.md section 11 (discipline mechanics).
-2. Reading ADRs/0001, 0002, 0003. (0003 changes the Phase 3 data-plane plan but does not affect Phase 1.)
-3. Implementing `src/core/ids.ts` (branded typed IDs: `SessionId`, `ProjectId`, `MessageId`).
-4. Implementing `src/core/pricing.ts` (PricingProvider class: load from local `pricing.json`, optional remote refresh, staleness signal).
-5. Writing tests in `tests/` for both before declaring Phase 1 done.
-6. Tagging `0.0.2` with the commit message `feat(0.0.2): typed IDs + pricing infrastructure`.
+1. Re-reading SPEC.md §10 Phase 2 and §11 (discipline mechanics).
+2. Implementing `src/core/cost.ts`. Given a `MessageEvent` and `PricingProvider`, return retail cost in USD. Handle the cache-creation rates correctly: ephemeral-5m at the `cache_write_5m_per_mtok` rate, ephemeral-1h at `cache_write_1h_per_mtok`, cache reads at `cache_read_per_mtok`. (Note: pricing.json already encodes the precomputed multipliers — do *not* multiply input × 1.25 in code; read the per-model rate directly.)
+3. Verifying the calculator against a known Anthropic console line item to the cent (manually, against a real session) before declaring this phase done.
+4. Table-driven Vitest tests including unknown-model, zero-token, and large-number cases. 100 % coverage on `src/core/cost.ts`.
+5. Updating CHANGELOG.md, `package.json`, and `plugin.json` to `0.0.3`. CHANGELOG entries must describe exactly what's in the staged diff — no aspirational entries (user-stated requirement).
+6. Tagging `0.0.3` with the commit message `feat(0.0.3): cost calculator`.
 
 ## Working conventions
 

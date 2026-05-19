@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2] — 2026-05-19
+
+### Added
+
+- `src/core/ids.ts` — branded typed IDs (`SessionId`, `ProjectId`, `MessageId`)
+  with a private `unique symbol` brand, a `makeXxxId` constructor that
+  validates non-empty/whitespace-trimmed/no-newline/≤256-char strings, runtime
+  type guards, and a structured `InvalidIdError`.
+- `src/core/pricing.ts` — `PricingProvider` class with
+  `fromDocument` / `fromFile` / `fromRemoteWithFallback` factories,
+  per-model rate lookup, schema-version gate (`"1.0"` only), and a
+  30-day staleness signal (`isStale`, `ageDays`). Remote fetch silently
+  falls back to the local file on any failure — the "no telemetry,
+  no phone-home" contract from SPEC.md §11.
+- Vitest test suite for both modules. 40 tests, 100 % statement / branch /
+  function / line coverage on `src/core/`.
+- `tsconfig.eslint.json` — separate include set so the typed ESLint rules
+  can lint `tests/` and `eslint.config.js` (typescript-eslint v8 typed-rules
+  scope is governed by the project's `include`).
+
+### Changed
+
+- `package.json` and `plugin.json` version → `0.0.2`.
+
+[0.0.2]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.2
+
 ## [0.0.1] — 2026-05-19
 
 ### Added
@@ -32,5 +58,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.0.2...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1
