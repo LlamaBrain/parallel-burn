@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] — 2026-05-19
+
+**Release candidate.** All eight SPEC.md §10 phases are shipped to disk
+and every automated check is green. Stable 1.0.0 is held back pending
+end-to-end human verification of the live integration surfaces (see
+"Awaiting human verification" below).
+
+### Added
+
+- **README rewrite** for the actual audiences (Claude Code power users,
+  hiring committees, the author). Real session output in the opening
+  block; metrics priority order made explicit; install paths for both
+  the plugin marketplace and from-source; statusline and OBS overlay
+  wiring instructions; privacy guarantees; an architecture pointer to
+  SPEC.md and the five ADRs; a "Reading this codebase" section for
+  engineers vetting the artifact.
+- **`bin` entries in `package.json`** — `parallel-burn`,
+  `parallel-burn-streak`, `parallel-burn-server`, `parallel-burn-statusline`.
+  Once installed via npm, the CLIs are on PATH.
+- **`prepare` script** — runs `npm run build` on install so consumers
+  of the package automatically get a working `dist/` folder.
+- **Distribution `files` whitelist** — `dist/`, `commands/`, `ADRs/`,
+  `SPEC.md`, `plugin.json`, `pricing.json`, `README.md`, `LICENSE`,
+  `CHANGELOG.md`. No tests, no source TS, no node_modules in the
+  published package.
+
+### Changed
+
+- `package.json` and `plugin.json` version → `1.0.0-rc.1`.
+
+### Verified (automated)
+
+- `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean,
+  218 Vitest tests pass.
+- All eight phases of SPEC.md §10 are shipped and tagged
+  (`v0.0.1` → `v0.5.0`, with this release candidate as the lead-up to
+  `v1.0.0`).
+- 100 % statement / function / line coverage across the entire
+  `src/core/` (11 modules) and `src/cli/` (4 modules) layer.
+
+### Awaiting human verification
+
+Stable `1.0.0` will be cut after a human has confirmed each of these
+surfaces actually works in a real Claude Code environment, not just
+under unit tests:
+
+- [ ] `/parallel-burn` invocation in a live Claude Code session prints
+  the today-aggregate card.
+- [ ] `/streak` invocation prints the streak + 30-day calendar.
+- [ ] The `statusLine` integration renders below the input area when
+  wired into `~/.claude/settings.json`.
+- [ ] `node dist/cli/serve.js` boots the localhost server; the OBS
+  browser source at `http://127.0.0.1:37337/overlay` displays the
+  dark, monospace card; it updates live when an event is broadcast.
+- [ ] `SessionStart` hook actually fires from Claude Code and writes
+  a manifest under `~/.parallel-burn/data/sessions/`.
+- [ ] `SessionEnd` hook actually fires and produces a summary markdown
+  file under `~/.parallel-burn/summaries/`.
+- [ ] Plugin install path (manual symlink or marketplace) actually
+  registers the hooks with Claude Code.
+
+[1.0.0-rc.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v1.0.0-rc.1
+
 ## [0.5.0] — 2026-05-19
 
 The localhost server + OBS browser-source overlay. Point an OBS browser
@@ -40,7 +103,7 @@ monospace, parallelism-first card that updates live.
   `src/server/server.ts` at 86.9 % — the uncovered lines are timer-tick
   callbacks and defensive error paths that aren't worth wiring elaborate
   timing tests for.**
-- 225 tests total. The full `src/core/` and `src/cli/` modules
+- 218 tests total. The full `src/core/` and `src/cli/` modules
   remain at 100 % statement / function / line coverage.
 
 ### Changed
@@ -50,7 +113,7 @@ monospace, parallelism-first card that updates live.
 ### Verified
 
 - `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean.
-- 225 Vitest tests pass.
+- 218 Vitest tests pass.
 - **Live smoke test:** `node dist/cli/serve.js` boots in <100 ms,
   binds 127.0.0.1:37337, prints `parallel-burn overlay:
   http://127.0.0.1:37337/overlay`. `curl http://127.0.0.1:37337/api/today`
@@ -398,5 +461,5 @@ machine.
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v1.0.0-rc.1...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1
