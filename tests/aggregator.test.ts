@@ -13,7 +13,7 @@ import {
   summarizeSession,
   type SessionAggregate,
 } from "../src/core/aggregator.js";
-import type { MessageEvent } from "../src/core/event.js";
+import type { MessageEvent } from "../src/core/event.js"; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { MESSAGE_EVENT_SCHEMA_VERSION } from "../src/core/event.js";
 import {
   makeMessageId,
@@ -83,19 +83,23 @@ function manifest(args: {
 }
 
 describe("summarizeSession", () => {
-  it("sums cost and tokens across events and derives duration from manifest", () => {
+  it("sums cost and tokens across events and derives duration from event timestamps", () => {
+    // Events span 10:00:00 → 11:00:00 — the summarizer now prefers
+    // event-derived timestamps over the manifest's started_at /
+    // last_seen_active when the session is still open. The manifest's
+    // ended_at is explicitly set here, so endedAt should match it.
     const m = manifest({
       sessionId: "s-1",
       project: "parallel-burn",
       startedAt: "2026-05-19T10:00:00.000Z",
       endedAt: "2026-05-19T11:00:00.000Z",
     });
-    const evs = [
-      event("claude-opus-4-7", { in: 1_000_000, out: 0 }),
-      event("claude-opus-4-7", { in: 0, out: 1_000_000 }),
+    const evs: MessageEvent[] = [
+      { ...event("claude-opus-4-7", { in: 1_000_000, out: 0 }), timestamp: "2026-05-19T10:00:00Z" },
+      { ...event("claude-opus-4-7", { in: 0, out: 1_000_000 }), timestamp: "2026-05-19T11:00:00Z" },
     ];
     const summary = summarizeSession(m, evs, PRICING);
-    expect(summary.costUsd).toBeCloseTo(15 + 75, 8); // $15 input + $75 output
+    expect(summary.costUsd).toBeCloseTo(15 + 75, 8);
     expect(summary.inputTokens).toBe(1_000_000);
     expect(summary.outputTokens).toBe(1_000_000);
     expect(summary.messageCount).toBe(2);
@@ -189,11 +193,13 @@ describe("rollUpDay", () => {
   }
 
   it("computes compression ratio from merged session intervals", () => {
+    // Use a past date so the extend-to-now logic doesn't fire. Pin nowMs
+    // for determinism either way.
     const sessions = [
-      sess({ id: "a", project: "p1", startedAt: "2026-05-19T10:00:00Z", endedAt: "2026-05-19T11:00:00Z", cost: 10 }),
-      sess({ id: "b", project: "p1", startedAt: "2026-05-19T10:30:00Z", endedAt: "2026-05-19T11:30:00Z", cost: 20 }),
+      sess({ id: "a", project: "p1", startedAt: "2024-01-15T10:00:00Z", endedAt: "2024-01-15T11:00:00Z", cost: 10 }),
+      sess({ id: "b", project: "p1", startedAt: "2024-01-15T10:30:00Z", endedAt: "2024-01-15T11:30:00Z", cost: 20 }),
     ];
-    const day = rollUpDay("2026-05-19", sessions);
+    const day = rollUpDay("2024-01-15", sessions, Date.parse("2026-05-19T18:00:00Z"));
     // a: 60 min, b: 60 min → session-context 120 min.
     // merged [10:00,11:30] → 90 min.
     expect(day.sessionContextMs).toBe(2 * 60 * 60 * 1000);
@@ -237,17 +243,18 @@ describe("rollUpDay", () => {
   });
 
   it("filters out sessions with unparseable timestamps from interval math", () => {
+    // Past date again so extend-to-now is bypassed.
     const sessions = [
-      sess({ id: "good", project: "p", startedAt: "2026-05-19T10:00:00Z", endedAt: "2026-05-19T11:00:00Z", cost: 0 }),
+      sess({ id: "good", project: "p", startedAt: "2024-01-15T10:00:00Z", endedAt: "2024-01-15T11:00:00Z", cost: 0 }),
       {
-        ...sess({ id: "bad", project: "p", startedAt: "2026-05-19T12:00:00Z", endedAt: "2026-05-19T13:00:00Z", cost: 0 }),
+        ...sess({ id: "bad", project: "p", startedAt: "2024-01-15T12:00:00Z", endedAt: "2024-01-15T13:00:00Z", cost: 0 }),
         startedAt: "not-a-date",
         endedAt: "also-not-a-date",
         lastSeenActive: "also-not-a-date",
       },
     ];
-    const day = rollUpDay("2026-05-19", sessions);
-    expect(day.sessionContextMs).toBe(60 * 60 * 1000); // only the good one
+    const day = rollUpDay("2024-01-15", sessions, Date.parse("2026-05-19T18:00:00Z"));
+    expect(day.sessionContextMs).toBe(60 * 60 * 1000);
   });
 });
 

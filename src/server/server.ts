@@ -56,9 +56,13 @@ export type LiveSnapshot = {
   readonly streak: number;
   /** Longest active-day streak ever observed in Claude Code's stats cache. */
   readonly longestStreak: number;
+  /** retail USD / subscription_daily_usd. */
   readonly subsidyMultiplier: number;
+  /** Pricing rate-card metadata. */
   readonly pricingAsOf: string;
   readonly pricingStale: boolean;
+  /** Iso8601 of when this snapshot was last computed. */
+  readonly computedAt: string;
 };
 
 /**
@@ -87,6 +91,7 @@ export async function buildSnapshot(config: ServerConfig): Promise<LiveSnapshot>
     subsidyMultiplier,
     pricingAsOf: pricing.asOf,
     pricingStale: pricing.isStale(),
+    computedAt: new Date().toISOString(),
   };
 }
 
@@ -146,6 +151,7 @@ async function buildTodaySnapshot(
     subsidyMultiplier,
     pricingAsOf: pricing.asOf,
     pricingStale: pricing.isStale(),
+    computedAt: new Date().toISOString(),
   };
 }
 
@@ -344,6 +350,7 @@ function emptySnapshotJson(): string {
       byProject: [],
       sessionContextMs: 0,
       wallClockWindowMs: 0,
+      spanMs: 0,
       compressionRatio: 0,
       totalCostUsd: 0,
       inputTokens: 0,
@@ -357,6 +364,7 @@ function emptySnapshotJson(): string {
     subsidyMultiplier: 0,
     pricingAsOf: "",
     pricingStale: false,
+    computedAt: new Date().toISOString(),
     warming: true,
   });
 }

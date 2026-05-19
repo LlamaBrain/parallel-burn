@@ -27,8 +27,22 @@ describe("mergeIntervals", () => {
     expect(mergeIntervals([M(0, 5), M(5, 10), M(10, 15)])).toEqual([M(0, 15)]);
   });
 
-  it("keeps strictly separated intervals separate", () => {
-    expect(mergeIntervals([M(0, 5), M(10, 15)])).toEqual([M(0, 5), M(10, 15)]);
+  it("keeps strictly separated intervals separate (with no gap tolerance)", () => {
+    expect(mergeIntervals([M(0, 5), M(10, 15)], { gapToleranceMs: 0 })).toEqual([M(0, 5), M(10, 15)]);
+  });
+
+  it("merges intervals separated by a small gap under the default 15-min tolerance", () => {
+    // Default tolerance is 15 min = 900_000 ms. A 5 ms gap is trivially merged.
+    expect(mergeIntervals([M(0, 5), M(10, 15)])).toEqual([M(0, 15)]);
+  });
+
+  it("keeps intervals separated by a gap larger than the tolerance", () => {
+    const tenSec = 10 * 1000;
+    const twentyMin = 20 * 60 * 1000;
+    expect(mergeIntervals([M(0, tenSec), M(twentyMin, twentyMin + tenSec)])).toEqual([
+      M(0, tenSec),
+      M(twentyMin, twentyMin + tenSec),
+    ]);
   });
 
   it("sorts unordered inputs before merging", () => {
@@ -95,13 +109,28 @@ describe("computeCompression", () => {
     expect(r.ratio).toBeCloseTo(200 / 150);
   });
 
-  it("uses merged-interval, NOT naive max(end) - min(start)", () => {
+  it("uses merged-interval, NOT naive max(end) - min(start) — with strict no-gap merge", () => {
     // If we used naive first-to-last, gap windows would be counted.
     // Session A: 0-10, Session B: 50-60. Wall clock should be 20, not 60.
-    const r = computeCompression([M(0, 10), M(50, 60)]);
+    const r = computeCompression([M(0, 10), M(50, 60)], { gapToleranceMs: 0 });
     expect(r.sessionContextMs).toBe(20);
     expect(r.wallClockWindowMs).toBe(20);
+    expect(r.spanMs).toBe(60);
     expect(r.ratio).toBeCloseTo(1.0);
+  });
+
+  it("with the default 15-min gap tolerance, small gaps roll into one wall block", () => {
+    // Two sessions 30 min and 30 min, separated by 5 min — falls under
+    // the default 15-min tolerance.
+    const ms = (m: number): number => m * 60 * 1000;
+    const r = computeCompression([
+      M(0, ms(30)),
+      M(ms(35), ms(35) + ms(30)),
+    ]);
+    expect(r.sessionContextMs).toBe(ms(60));
+    expect(r.wallClockWindowMs).toBe(ms(65)); // merged: 0..ms(65) = 65 min
+    expect(r.spanMs).toBe(ms(65));
+    expect(r.ratio).toBeCloseTo(60 / 65);
   });
 
   it("returns zeroes for empty input", () => {

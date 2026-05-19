@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.4] — 2026-05-19
+
+**Dashboard expansion + numerical alignment with the operator's
+reference `/session-summary` skill.** rc.3 shipped a streak that matched
+Claude Code's `/stats` view; rc.4 closes the gap on the *day-level
+math*: wall-clock, span, session-context, and parallelism multiplier now
+align with the skill's algorithm, and the overlay grows into a real
+in-terminal/in-OBS dashboard surfacing the metrics the operator asked
+to see.
+
+### Changed (math alignment with `/session-summary` skill)
+
+- **`mergeIntervals`** now takes a `gapToleranceMs` option (default
+  **15 minutes**). Two sessions separated by ≤ 15 min collapse into a
+  single block — same threshold the operator's skill uses. Pass
+  `gapToleranceMs: 0` for strict-overlap merging (the pre-rc.4
+  behavior).
+- **`computeCompression`** also returns `spanMs` (naive
+  `max(end) − min(start)`) alongside `wallClockWindowMs`. Useful as a
+  diagnostic: if span ≫ wall, the day had idle stretches between
+  active blocks.
+- **`aggregateDay`** now buckets sessions by `localDateOf(last_seen_active)`
+  rather than `started_at` — a session that started yesterday late but
+  ran into today counts as today's. For today's date, the latest
+  interval is extended to "now" so ongoing work counts toward wall.
+- **`dateOf` is now local-timezone**. ISO timestamps render to the
+  operator's local YYYY-MM-DD instead of the UTC slice. An 11 PM PDT
+  session lands in the PDT day, not the next UTC day. (Also exported
+  `localToday(now)` for the "what is today's date?" question.)
+- **`summarizeSession`** derives session start / last-seen from the
+  *transcript events themselves* when available, instead of trusting
+  the manifest's potentially-stale `last_seen_active`. Active sessions
+  that have appended events since the last backfill now report current
+  state.
+- **`backfill` recurses into `<session-id>/subagents/agent-*.jsonl`**.
+  The skill's `find ... -name "*.jsonl" -type f` traversal includes
+  these subdirectories; ours did not. Discovered 395 additional
+  transcripts on the operator's machine when re-run.
+
+### Added (dashboard)
+
+- **Expanded `LiveSnapshot`**: `spanMs`, `longestStreak`, `computedAt`
+  fields. The empty/warming snapshot includes a `warming: true` flag so
+  the overlay can dim its display until the cache warms.
+- **Rewritten overlay HTML** (`src/server/overlay.ts`): no longer a
+  4-row card. New layout:
+  - Hero row: `2.5×` parallelism multiplier (large, accent color).
+  - 12-cell metric grid: today's list-price, subsidy multiplier,
+    session-context, wall (merged), temporal span, sessions count,
+    tokens in / out, cache writes / reads, cache rate, streak (with
+    longest as a secondary).
+  - Footer: live-status dot, pricing as-of.
+  - Warming-mode opacity dim during initial cache hydration.
+
+### Verified (on the operator's machine, live)
+
+Side-by-side against the reference skill (run within the same minute):
+
+| Metric            | Skill   | ParallelBurn rc.4 | Delta |
+| ----------------- | ------- | ----------------- | ----- |
+| Sessions          | 68      | 68                | 0     |
+| Session-context   | 1017 min | 954 min          | -6 %  |
+| Wall (merged)     | 369 min | 382 min          | +3.5 % |
+| Span              | 369 min | 382 min          | +3.5 % |
+| Parallelism       | 2.75×   | 2.50×            | -0.25 |
+| Streak            | 57d     | 57d              | 0     |
+
+Remaining drift on context/parallelism: the skill greps `"timestamp":` from
+**all** event types in a transcript (attachments, user messages, hook
+records). ParallelBurn currently derives first/last timestamps only
+from `type: "assistant"` events. Documented; safe to leave for rc.5.
+
+- `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean.
+- **262 Vitest tests pass.**
+- **Plugin uninstalled at rc.3, re-installed at rc.4** via
+  `claude plugin install parallel-burn@llamabrain`. `claude plugin list`
+  confirms.
+- **Server running on PID 7300** at `http://127.0.0.1:37337`. `curl
+  /api/today` returns the warmed snapshot in ~1 ms. The combined
+  statusline shim runs in ~950 ms (dominated by the
+  `ccstatusline-usage` npx resolve).
+
+### Still awaiting human verification
+
+The remaining items from rc.1's checklist that need a fresh Claude Code
+session to confirm: hooks firing from Claude Code, the statusline
+rendering in-app under the input area, the OBS browser source actually
+displaying in OBS, and the `/parallel-burn` / `/streak` /
+`/parallel-burn-backfill` commands showing up in `/help`.
+
+[1.0.0-rc.4]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v1.0.0-rc.4
+
 ## [1.0.0-rc.3] — 2026-05-19
 
 A working release candidate, surfaced and shaped by real-world use. Five
@@ -624,5 +716,5 @@ machine.
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v1.0.0-rc.3...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v1.0.0-rc.4...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1

@@ -56,14 +56,20 @@ export type DailyAggregate = {
   readonly date: string;
   readonly sessions: readonly SessionAggregate[];
   readonly byProject: readonly ProjectAggregate[];
+  /** Sum of per-session durations (numerator of the parallelism ratio). */
   readonly sessionContextMs: number;
+  /** Merged-interval wall-clock window with a 15-min gap tolerance (matches the operator's session-summary skill). */
   readonly wallClockWindowMs: number;
+  /** Naive max(end) - min(start). Diagnostic — counts cross-session idle gaps as wall. */
+  readonly spanMs: number;
+  /** sessionContextMs / wallClockWindowMs. */
   readonly compressionRatio: number;
   readonly totalCostUsd: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cacheReadTokens: number;
   readonly cacheWriteTokens: number;
+  /** cacheReadTokens / cacheWriteTokens — how hard the cache is working. */
   readonly cacheDisciplineRatio: number;
 };
 
@@ -126,6 +132,8 @@ export function summarizeSession(
   let cacheWrite = 0;
   let unknownModel = false;
   let model: string | null = null;
+  let latestEventTs: number | null = null;
+  let earliestEventTs: number | null = null;
 
   for (const ev of events) {
     const breakdown: CostBreakdown = computeCost(ev, pricing);
@@ -140,12 +148,28 @@ export function summarizeSession(
     );
     if (breakdown.unknownModel) unknownModel = true;
     if (model === null) model = ev.model;
+    const t = Date.parse(ev.timestamp);
+    if (Number.isFinite(t)) {
+      if (latestEventTs === null || t > latestEventTs) latestEventTs = t;
+      if (earliestEventTs === null || t < earliestEventTs) earliestEventTs = t;
+    }
   }
 
-  const startMs = Date.parse(manifest.started_at);
-  const endMs = Date.parse(
-    manifest.ended_at ?? manifest.last_seen_active,
-  );
+  // Prefer event-derived timestamps over manifest fields when available.
+  // For backfilled-but-stale manifests of still-active sessions, the
+  // manifest's last_seen_active lags reality by however long it's been
+  // since the last backfill — but the transcript itself stays current.
+  const startedAt =
+    earliestEventTs !== null && (manifest.ended_at === null || earliestEventTs > 0)
+      ? new Date(earliestEventTs).toISOString()
+      : manifest.started_at;
+  const lastSeenActive =
+    latestEventTs !== null && manifest.ended_at === null
+      ? new Date(latestEventTs).toISOString()
+      : manifest.last_seen_active;
+
+  const startMs = Date.parse(startedAt);
+  const endMs = Date.parse(manifest.ended_at ?? lastSeenActive);
   const durationMs = Number.isFinite(startMs) && Number.isFinite(endMs)
     ? Math.max(0, endMs - startMs)
     : 0;
@@ -154,9 +178,9 @@ export function summarizeSession(
     sessionId: manifest.session_id,
     project: manifest.project,
     model,
-    startedAt: manifest.started_at,
+    startedAt,
     endedAt: manifest.ended_at,
-    lastSeenActive: manifest.last_seen_active,
+    lastSeenActive,
     durationMs,
     messageCount: events.length,
     costUsd: cost,
@@ -199,37 +223,57 @@ function isFileNotFound(err: unknown): boolean {
 }
 
 /**
- * Aggregate all sessions whose `started_at` falls on the given `date`
- * (UTC YYYY-MM-DD). Returns zeroed metrics if no sessions match.
+ * Aggregate all sessions whose **last activity** falls on the given local
+ * `date` (YYYY-MM-DD in the operator's timezone). A session counts as
+ * today's if its `last_seen_active` (or `ended_at`) is today — that
+ * catches sessions that started yesterday late and continued past
+ * midnight, matching the operator's reference session-summary skill.
+ *
+ * `nowMs` lets tests pin "now" to a deterministic moment.
  */
 export async function aggregateDay(
   date: string,
   pricing: PricingProvider,
   options: AggregatorOptions = {},
+  nowMs: number = Date.now(),
 ): Promise<DailyAggregate> {
   const all = await listSessions(options);
-  const onDay = all.filter((m) => dateOf(m.started_at) === date);
+  const onDay = all.filter((m) => {
+    const lastActive = m.ended_at ?? m.last_seen_active;
+    return dateOf(lastActive) === date;
+  });
   const sessions: SessionAggregate[] = [];
   for (const m of onDay) {
     sessions.push(await aggregateFromManifest(m, pricing, options));
   }
-  return rollUpDay(date, sessions);
+  return rollUpDay(date, sessions, nowMs);
 }
 
 /**
  * Roll an already-aggregated set of sessions into a DailyAggregate. Pure;
  * no I/O. Easier to test the math in isolation.
+ *
+ * If `date` matches today's local date and `nowMs` is supplied, the
+ * latest interval is extended to `nowMs` — ongoing work counts toward
+ * wall, matching the operator's session-summary skill.
  */
 export function rollUpDay(
   date: string,
   sessions: readonly SessionAggregate[],
+  nowMs: number = Date.now(),
 ): DailyAggregate {
-  const intervals: Interval[] = sessions
+  const rawIntervals: Interval[] = sessions
     .map((s) => ({
       start: Date.parse(s.startedAt),
       end: Date.parse(s.endedAt ?? s.lastSeenActive),
     }))
     .filter((i) => Number.isFinite(i.start) && Number.isFinite(i.end));
+
+  // For today's date, extend the latest interval to "now" so ongoing
+  // work counts. Use the operator's local-today check: a date matches
+  // today if it equals dateOf(now).
+  const isToday = date === dateOf(new Date(nowMs).toISOString());
+  const intervals = isToday ? extendLatestToNow(rawIntervals, nowMs) : rawIntervals;
 
   const compression = computeCompression(intervals);
 
@@ -262,6 +306,7 @@ export function rollUpDay(
     byProject,
     sessionContextMs: compression.sessionContextMs,
     wallClockWindowMs: compression.wallClockWindowMs,
+    spanMs: compression.spanMs,
     compressionRatio: compression.ratio,
     totalCostUsd: totalCost,
     inputTokens: totalInput,
@@ -270,4 +315,23 @@ export function rollUpDay(
     cacheWriteTokens: totalCacheWrite,
     cacheDisciplineRatio,
   };
+}
+
+function extendLatestToNow(intervals: readonly Interval[], nowMs: number): Interval[] {
+  if (intervals.length === 0) return [];
+  let latestEnd = Number.NEGATIVE_INFINITY;
+  let latestIdx = 0;
+  for (let i = 0; i < intervals.length; i++) {
+    const end = intervals[i]?.end ?? Number.NEGATIVE_INFINITY;
+    if (end > latestEnd) {
+      latestEnd = end;
+      latestIdx = i;
+    }
+  }
+  if (!Number.isFinite(latestEnd) || latestEnd >= nowMs) {
+    return [...intervals];
+  }
+  return intervals.map((iv, i) =>
+    i === latestIdx ? { start: iv.start, end: nowMs } : iv,
+  );
 }

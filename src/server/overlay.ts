@@ -1,13 +1,12 @@
-// Embedded OBS browser-source HTML.
+// Embedded OBS browser-source HTML — also the local-dashboard view.
 //
-// Single-file: HTML + CSS + JS in one document. Subscribes to /events
-// via `EventSource` (per ADR-0005, SSE-not-WebSocket). Renders the
-// headline three numbers in priority order — parallelism, today's burn,
-// streak — per SPEC §10 Phase 7.
+// Renders the headline parallelism number prominently, then a small
+// grid of secondary metrics: today's burn, wall clock (merged), temporal
+// span, session-context, token in/out, cache hit rate, streak, and the
+// subsidy multiplier. Auto-reconnects via `EventSource` (ADR-0005).
 //
-// LlamaBrain visual identity: near-black background, monospace numerals,
-// soft-orange accent (#e8a04f, ANSI 38;5;208's hex equivalent). No
-// animation in v1 — static updates on each SSE event.
+// LlamaBrain visual identity: near-black background, monospace, soft
+// orange accent (#e8a04f).
 
 export const OVERLAY_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -48,121 +47,218 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 16px;
-    padding: 28px 36px;
-    min-width: 360px;
+    padding: 24px 32px;
+    min-width: 520px;
+    max-width: 720px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.4);
   }
   .header {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 13px;
+    font-size: 12px;
     color: var(--dim);
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
   }
   .header .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
+    width: 8px; height: 8px; border-radius: 50%;
     background: var(--accent);
     box-shadow: 0 0 8px var(--accent);
   }
-  .row {
+  .hero {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0 14px;
+    border-bottom: 1px solid var(--card-border);
+    margin-bottom: 14px;
+  }
+  .hero .ratio {
+    font-size: 56px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+  }
+  .hero .label {
+    font-size: 14px;
+    color: var(--dim);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 24px;
+  }
+  .metric {
     display: grid;
     grid-template-columns: 1fr auto;
     align-items: baseline;
-    gap: 12px;
-    padding: 10px 0;
+    padding: 6px 0;
     border-bottom: 1px dashed rgba(255,255,255,0.05);
   }
-  .row:last-of-type { border-bottom: none; }
-  .label { color: var(--dim); font-size: 13px; }
-  .value { font-size: 32px; font-weight: 600; letter-spacing: 0.01em; }
-  .value.accent { color: var(--accent); font-size: 48px; }
-  .unit { color: var(--dim); font-size: 14px; margin-left: 4px; }
+  .metric .label { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .metric .value { font-size: 18px; font-weight: 600; }
+  .metric .sub { color: var(--dim); font-size: 11px; margin-left: 6px; }
   .footer {
-    margin-top: 18px;
-    padding-top: 12px;
+    margin-top: 14px;
+    padding-top: 10px;
     border-top: 1px solid var(--card-border);
     font-size: 11px;
     color: var(--dim);
     display: flex;
     justify-content: space-between;
+    align-items: center;
   }
-  .stale { color: var(--warn); }
   .live-dot {
     display: inline-block;
-    width: 6px;
-    height: 6px;
+    width: 6px; height: 6px;
     border-radius: 50%;
     background: var(--good);
     margin-right: 6px;
     vertical-align: middle;
   }
   .live-dot.disconnected { background: var(--bad); }
+  .stale { color: var(--warn); }
+  .warming { opacity: 0.55; }
 </style>
 </head>
 <body>
-<div class="card">
+<div class="card" id="card">
   <div class="header">
     <span class="dot"></span>
     <span>ParallelBurn — <span id="date">—</span></span>
+    <span style="flex:1"></span>
+    <span id="warming-tag" style="display:none;color:var(--warn)">warming…</span>
   </div>
-  <div class="row">
-    <span class="label">parallelism</span>
-    <span class="value accent" id="compression">—</span>
+
+  <div class="hero">
+    <div class="ratio" id="compression">—</div>
+    <div class="label">× parallelism · context ÷ merged wall</div>
   </div>
-  <div class="row">
-    <span class="label">today</span>
-    <span class="value" id="cost">—</span>
+
+  <div class="grid">
+    <div class="metric">
+      <span class="label">today list-price</span>
+      <span class="value" id="cost">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">subsidy</span>
+      <span class="value" id="subsidy">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">session-context</span>
+      <span class="value" id="context">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">wall (merged)</span>
+      <span class="value" id="wall">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">temporal span</span>
+      <span class="value" id="span">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">sessions</span>
+      <span class="value" id="sessions">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">tokens in</span>
+      <span class="value" id="tokens-in">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">tokens out</span>
+      <span class="value" id="tokens-out">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">cache writes</span>
+      <span class="value" id="cache-writes">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">cache reads</span>
+      <span class="value" id="cache-reads">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">cache rate</span>
+      <span class="value" id="cache-rate">—</span>
+    </div>
+    <div class="metric">
+      <span class="label">streak</span>
+      <span class="value" id="streak">—<span class="sub" id="longest"></span></span>
+    </div>
   </div>
-  <div class="row">
-    <span class="label">streak</span>
-    <span class="value" id="streak">—<span class="unit">d</span></span>
-  </div>
-  <div class="row">
-    <span class="label">cache discipline</span>
-    <span class="value" id="cache">—</span>
-  </div>
+
   <div class="footer">
     <span><span class="live-dot" id="live-dot"></span><span id="status">connecting…</span></span>
     <span id="pricing">pricing —</span>
   </div>
 </div>
+
 <script>
   (function () {
     var els = {
+      card: document.getElementById('card'),
+      warming: document.getElementById('warming-tag'),
       date: document.getElementById('date'),
       compression: document.getElementById('compression'),
       cost: document.getElementById('cost'),
+      subsidy: document.getElementById('subsidy'),
+      context: document.getElementById('context'),
+      wall: document.getElementById('wall'),
+      span: document.getElementById('span'),
+      sessions: document.getElementById('sessions'),
+      tokensIn: document.getElementById('tokens-in'),
+      tokensOut: document.getElementById('tokens-out'),
+      cacheWrites: document.getElementById('cache-writes'),
+      cacheReads: document.getElementById('cache-reads'),
+      cacheRate: document.getElementById('cache-rate'),
       streak: document.getElementById('streak'),
-      cache: document.getElementById('cache'),
+      longest: document.getElementById('longest'),
       status: document.getElementById('status'),
       liveDot: document.getElementById('live-dot'),
       pricing: document.getElementById('pricing'),
     };
 
-    function fmtRatio(r) {
-      if (!isFinite(r) || r <= 0) return '—';
-      return r.toFixed(1) + '×';
+    function fmtRatio(r) { return (isFinite(r) && r > 0) ? r.toFixed(1) + '×' : '—'; }
+    function fmtUsd(n) { return isFinite(n) ? '$' + n.toFixed(2) : '$—'; }
+    function fmtDuration(ms) {
+      if (!isFinite(ms) || ms <= 0) return '0m';
+      var totalMin = Math.floor(ms / 60000);
+      var h = Math.floor(totalMin / 60);
+      var m = totalMin % 60;
+      return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
     }
-    function fmtUsd(n) {
-      if (!isFinite(n)) return '$—';
-      return '$' + n.toFixed(2);
+    function fmtCount(n) {
+      if (!isFinite(n) || n < 0) return '—';
+      if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+      return String(Math.round(n));
     }
 
     function render(snap) {
-      els.date.textContent = snap.date;
-      els.compression.textContent = fmtRatio(snap.aggregate.compressionRatio);
-      els.cost.textContent = fmtUsd(snap.aggregate.totalCostUsd);
-      var streakNum = String(snap.streak);
-      els.streak.innerHTML = streakNum + '<span class="unit">d</span>';
-      els.cache.textContent = fmtRatio(snap.aggregate.cacheDisciplineRatio);
-      var staleNote = snap.pricingStale ? ' (STALE)' : '';
+      var a = snap.aggregate;
+      els.card.classList.toggle('warming', !!snap.warming);
+      els.warming.style.display = snap.warming ? '' : 'none';
+      els.date.textContent = snap.date || '—';
+      els.compression.textContent = fmtRatio(a.compressionRatio);
+      els.cost.textContent = fmtUsd(a.totalCostUsd);
+      els.subsidy.textContent = isFinite(snap.subsidyMultiplier) && snap.subsidyMultiplier > 0
+        ? Math.round(snap.subsidyMultiplier) + '× plan'
+        : '—';
+      els.context.textContent = fmtDuration(a.sessionContextMs);
+      els.wall.textContent = fmtDuration(a.wallClockWindowMs);
+      els.span.textContent = fmtDuration(a.spanMs);
+      els.sessions.textContent = String(a.sessions ? a.sessions.length : 0);
+      els.tokensIn.textContent = fmtCount(a.inputTokens);
+      els.tokensOut.textContent = fmtCount(a.outputTokens);
+      els.cacheWrites.textContent = fmtCount(a.cacheWriteTokens);
+      els.cacheReads.textContent = fmtCount(a.cacheReadTokens);
+      els.cacheRate.textContent = fmtRatio(a.cacheDisciplineRatio);
+      els.streak.innerHTML = String(snap.streak) + '<span class="sub" id="longest"> / ' + String(snap.longestStreak || 0) + ' best</span>';
       var staleClass = snap.pricingStale ? 'stale' : '';
-      els.pricing.innerHTML = '<span class="' + staleClass + '">pricing ' + snap.pricingAsOf + staleNote + '</span>';
+      var staleNote = snap.pricingStale ? ' (STALE)' : '';
+      els.pricing.innerHTML = '<span class="' + staleClass + '">pricing ' + (snap.pricingAsOf || '—') + staleNote + '</span>';
     }
 
     function setConnected(connected) {
@@ -180,11 +276,8 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
       es.onopen = function () { setConnected(true); };
       es.onerror = function () { setConnected(false); };
       es.onmessage = function (e) {
-        try {
-          var snap = JSON.parse(e.data);
-          render(snap);
-          setConnected(true);
-        } catch (err) {}
+        try { var snap = JSON.parse(e.data); render(snap); setConnected(true); }
+        catch (err) {}
       };
     }
 

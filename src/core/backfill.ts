@@ -67,23 +67,55 @@ export async function* discoverTranscripts(
   }
   for (const projectDirName of projects) {
     const projectDir = join(projectsDir, projectDirName);
-    let entries: string[];
     try {
       const st = await stat(projectDir);
       if (!st.isDirectory()) continue;
-      entries = await readdir(projectDir);
     } catch {
       continue;
     }
-    for (const name of entries) {
-      if (!name.endsWith(JSONL_SUFFIX)) continue;
-      const sessionId = name.slice(0, -JSONL_SUFFIX.length);
-      if (!isSessionId(sessionId)) continue;
-      const transcriptPath = join(projectDir, name);
+    // Recurse into the project tree so we pick up
+    // `<session-id>/subagents/agent-<hex>.jsonl` etc.
+    for await (const transcriptPath of walkJsonlFiles(projectDir)) {
+      const baseName = basenameNoExt(transcriptPath);
+      if (!isSessionId(baseName)) continue;
       const meta = await scanTranscriptMetadata(transcriptPath);
-      yield { sessionId, transcriptPath, ...meta };
+      yield { sessionId: baseName, transcriptPath, ...meta };
     }
   }
+}
+
+const MAX_RECURSION_DEPTH = 4;
+
+async function* walkJsonlFiles(
+  dir: string,
+  depth: number = 0,
+): AsyncIterable<string> {
+  if (depth > MAX_RECURSION_DEPTH) return;
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    const full = join(dir, name);
+    try {
+      const st = await stat(full);
+      if (st.isDirectory()) {
+        yield* walkJsonlFiles(full, depth + 1);
+      } else if (st.isFile() && name.endsWith(JSONL_SUFFIX)) {
+        yield full;
+      }
+    } catch {
+      continue;
+    }
+  }
+}
+
+function basenameNoExt(path: string): string {
+  const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  const base = slash >= 0 ? path.slice(slash + 1) : path;
+  return base.endsWith(JSONL_SUFFIX) ? base.slice(0, -JSONL_SUFFIX.length) : base;
 }
 
 type TranscriptMetadata = {

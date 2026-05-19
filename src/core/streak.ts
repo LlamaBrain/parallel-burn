@@ -8,10 +8,13 @@
 // breaks the streak. The streak length is the number of qualifying days
 // counted, *inclusive* of today if today qualifies.
 //
-// Date strings throughout are ISO calendar dates (`YYYY-MM-DD`) in UTC. We
-// don't try to do local-timezone arithmetic — the operator who cares about
-// 11:59 PM vs 12:01 AM rollover can configure their TZ and the dates will
-// fall out correctly from the timestamps.
+// Date strings throughout are calendar dates in **the operator's local
+// timezone** (`YYYY-MM-DD`). This matches what Claude Code's /stats view
+// shows and what users expect when they say "today" — a session run at
+// 11:30 PM PDT lands in today's bucket, not tomorrow's. ADR-0006 picked
+// up `~/.claude/stats-cache.json` as the source of truth for daily
+// aggregates; that cache uses the same local-date semantics, so the
+// numbers line up by construction.
 
 export const DEFAULT_DAILY_THRESHOLD_USD = 50;
 export const MS_PER_DAY = 86_400_000;
@@ -56,8 +59,32 @@ export function previousDay(yyyyMMdd: string): string {
 }
 
 /**
- * Extract the `YYYY-MM-DD` UTC date prefix from an ISO 8601 timestamp.
+ * Extract the `YYYY-MM-DD` **local-timezone** calendar date from an ISO
+ * 8601 timestamp. Uses the runtime's `getFullYear` / `getMonth` /
+ * `getDate` (system TZ), so an 11 PM PDT session lands in the PDT day,
+ * not the UTC day after midnight.
+ *
+ * Returns the literal first 10 chars unchanged if the timestamp doesn't
+ * parse as a valid date — defensive for malformed input.
  */
 export function dateOf(isoTimestamp: string): string {
-  return isoTimestamp.slice(0, 10);
+  const ms = Date.parse(isoTimestamp);
+  if (!Number.isFinite(ms)) return isoTimestamp.slice(0, 10);
+  const d = new Date(ms);
+  const yyyy = String(d.getFullYear()).padStart(4, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Today's calendar date in the operator's local timezone (YYYY-MM-DD).
+ * Convenience for the common "what is today?" question — equivalent to
+ * `dateOf(new Date().toISOString())`.
+ */
+export function localToday(now: Date = new Date()): string {
+  const yyyy = String(now.getFullYear()).padStart(4, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
