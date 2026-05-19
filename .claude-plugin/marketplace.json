@@ -1,0 +1,18 @@
+{
+  "name": "llamabrain",
+  "owner": {
+    "name": "Michael Tiller"
+  },
+  "metadata": {
+    "description": "LlamaBrain Claude Code plugins.",
+    "homepage": "https://github.com/LlamaBrain/parallel-burn"
+  },
+  "plugins": [
+    {
+      "name": "parallel-burn",
+      "version": "1.0.0-rc.2",
+      "source": ".",
+      "description": "Surfaces parallelism, cache discipline, and retail-price cost from your Claude Code sessions. Localhost overlay for OBS browser-source rendering."
+    }
+  ]
+}
