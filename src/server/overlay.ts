@@ -143,8 +143,8 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
       <span class="value" id="cost">—</span>
     </div>
     <div class="metric">
-      <span class="label">subsidy</span>
-      <span class="value" id="subsidy">—</span>
+      <span class="label">cache hit</span>
+      <span class="value" id="cache-hit">—</span>
     </div>
     <div class="metric">
       <span class="label">session-context</span>
@@ -202,7 +202,7 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
       date: document.getElementById('date'),
       compression: document.getElementById('compression'),
       cost: document.getElementById('cost'),
-      subsidy: document.getElementById('subsidy'),
+      cacheHit: document.getElementById('cache-hit'),
       context: document.getElementById('context'),
       rowWall: document.getElementById('row-wall'),
       wall: document.getElementById('wall'),
@@ -248,8 +248,8 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
       els.date.textContent = snap.date || '—';
       els.compression.textContent = fmtRatio(a.compressionRatio);
       els.cost.textContent = fmtUsd(a.totalCostUsd);
-      els.subsidy.textContent = isFinite(snap.subsidyMultiplier) && snap.subsidyMultiplier > 0
-        ? Math.round(snap.subsidyMultiplier) + '× plan'
+      els.cacheHit.textContent = isFinite(a.cacheHitPercent) && a.cacheHitPercent >= 0
+        ? a.cacheHitPercent.toFixed(1) + '%'
         : '—';
       els.context.textContent = fmtDuration(a.sessionContextMs);
       // Collapse the wall and span rows when they're essentially equal —

@@ -71,6 +71,8 @@ export type DailyAggregate = {
   readonly cacheWriteTokens: number;
   /** cacheReadTokens / cacheWriteTokens — how hard the cache is working. */
   readonly cacheDisciplineRatio: number;
+  /** cacheReadTokens / (inputTokens + cacheReadTokens) — fraction of prompt input served from cache, as a percent in [0, 100]. */
+  readonly cacheHitPercent: number;
 };
 
 export type AggregatorOptions = {
@@ -299,6 +301,9 @@ export function rollUpDay(
     .map(([project, agg]) => ({ project, ...agg }))
     .sort((a, b) => b.costUsd - a.costUsd);
   const cacheDisciplineRatio = totalCacheWrite > 0 ? totalCacheRead / totalCacheWrite : 0;
+  const promptInputDenominator = totalInput + totalCacheRead;
+  const cacheHitPercent =
+    promptInputDenominator > 0 ? (totalCacheRead / promptInputDenominator) * 100 : 0;
 
   return {
     date,
@@ -314,6 +319,7 @@ export function rollUpDay(
     cacheReadTokens: totalCacheRead,
     cacheWriteTokens: totalCacheWrite,
     cacheDisciplineRatio,
+    cacheHitPercent,
   };
 }
 

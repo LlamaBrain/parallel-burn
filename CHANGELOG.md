@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `DailyAggregate.cacheHitPercent` — fraction of prompt input served
+  from cache, computed as `cacheReadTokens / (inputTokens + cacheReadTokens) * 100`.
+  Surfaced on the overlay in place of the subsidy multiplier.
+
 ### Changed
 
+- **Overlay**: replaced the `subsidy` row with a `cache hit` row
+  showing the cache hit percent. Subsidy is still computed and
+  available on the snapshot JSON for any API consumer that wants it.
 - Overlay now collapses the `wall` and `span` rows into one
   `wall · span (continuous)` row when the two values agree within a
   1-minute tolerance. On a continuous-overlap day (no idle gaps > 15

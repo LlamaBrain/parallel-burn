@@ -358,6 +358,7 @@ function emptySnapshotJson(): string {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       cacheDisciplineRatio: 0,
+      cacheHitPercent: 0,
     },
     streak: 0,
     longestStreak: 0,
