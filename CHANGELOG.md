@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-19
+
+The presentation layer. With the aggregator from 0.2.0 producing typed
+`DailyAggregate`s, this release ships the three user-facing surfaces:
+`/parallel-burn`, `/streak`, and a Claude Code `statusLine` integration.
+
+### Added
+
+- `src/cli/format.ts` — table renderer (auto-sized columns, left/right
+  align) plus `formatDuration` / `formatUsd` / `formatCount` /
+  `formatRatio` / `truncate`. Zero dependencies; no `cli-table3`. Pure
+  string-in-string-out; 100 % covered.
+- `src/cli/parallel-burn.ts` — the `/parallel-burn` CLI. Headline
+  narrative leads with **parallelism**, then dollars (per SPEC §3:
+  "The README, summary output, and overlay must all lead with
+  parallelism, not with dollars."). Per-session table (Duration / Cost
+  / Size / Project / Session) and a By-Project rollup. Closing
+  interpretation line shifts between "heavy parallel work", "comfortably
+  parallel", "some overlap", and "Strictly serial day so far" based on
+  the compression ratio. Footer surfaces a pricing-staleness warning if
+  `pricing.json` is older than 30 days.
+- `src/cli/streak.ts` — the `/streak` CLI. Current streak count, last-30-
+  day daily-cost calendar, qualifying-days summary, and a `yes` /
+  `—` marker per day.
+- `src/cli/statusline.ts` — single-line summary for Claude Code's
+  `statusLine` setting. Same parallelism-first priority as the slash
+  commands. ANSI-colored accent dot. To enable, add
+  `"statusLine": { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli/statusline.js\"" }`
+  to `~/.claude/settings.json`. Hook failures never break Claude
+  Code — the worst case is a blank statusline.
+- `commands/parallel-burn.md` and `commands/streak.md` — auto-discovered
+  by Claude Code's plugin manifest as `/parallel-burn` and `/streak`.
+  Each is a thin markdown shim that runs the matching CLI via a
+  `!bash` invocation against `${CLAUDE_PLUGIN_ROOT}/dist/cli/*.js` and
+  instructs Claude to display the output verbatim.
+- 32 new Vitest tests across `format.test.ts` and `cli.test.ts`.
+  **190 tests total. 100 % statement / function / line coverage on
+  every `src/core/` and `src/cli/` module.** The presentation tests
+  exercise the pure renderers; the side-effectful entry points are
+  marked `/* v8 ignore */` per the documented convention.
+
+### Changed
+
+- `package.json` and `plugin.json` version → `0.3.0`.
+
+### Verified
+
+- `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean.
+- 190 Vitest tests pass.
+- End-to-end smoke against compiled `dist/cli/*.js`:
+  - `node dist/cli/parallel-burn.js` renders an empty-day card (no
+    sessions on disk yet — the SessionStart hook hasn't fired in
+    this install).
+  - `node dist/cli/streak.js` renders the 30-day calendar and a
+    streak of 0d.
+  - `echo '{}' | node dist/cli/statusline.js` prints the
+    parallelism-first one-liner with proper ANSI colors.
+
+[0.3.0]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.3.0
+
 ## [0.2.0] — 2026-05-19
 
 The metrics layer. With the data plane in place from 0.1.0, this release
@@ -234,5 +294,5 @@ machine.
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.3.0...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1

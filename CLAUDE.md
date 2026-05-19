@@ -11,8 +11,9 @@ Phase 1 (typed IDs + pricing infrastructure) — **complete** at `v0.0.2`.
 Phase 2 (cost calculator) — **complete** at `v0.0.3`.
 Phase 3 (hooks + transcript-derived data plane) — **complete** at `v0.1.0`.
 Phase 4 (aggregator + compression + streak) — **complete** at `v0.2.0`.
+Phase 5 (slash commands + statusline) — **complete** at `v0.3.0`.
 
-Phase 5 (`/parallel-burn` and `/streak` slash commands) — **next**.
+Phase 6 (end-of-session markdown summary) — **next**.
 
 ### Begin Phase 2 by
 
