@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Overlay now collapses the `wall` and `span` rows into one
+  `wall · span (continuous)` row when the two values agree within a
+  1-minute tolerance. On a continuous-overlap day (no idle gaps > 15
+  min between sessions, like today on the operator's machine) the two
+  numbers are identical by definition; collapsing them reclaims a row
+  and surfaces the day's continuity as a label.
+
 ## [1.0.0-rc.4] — 2026-05-19
 
 **Dashboard expansion + numerical alignment with the operator's

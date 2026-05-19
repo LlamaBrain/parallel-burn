@@ -150,11 +150,11 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
       <span class="label">session-context</span>
       <span class="value" id="context">—</span>
     </div>
-    <div class="metric">
-      <span class="label">wall (merged)</span>
+    <div class="metric" id="row-wall">
+      <span class="label" id="wall-label">wall (merged)</span>
       <span class="value" id="wall">—</span>
     </div>
-    <div class="metric">
+    <div class="metric" id="row-span">
       <span class="label">temporal span</span>
       <span class="value" id="span">—</span>
     </div>
@@ -204,7 +204,10 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
       cost: document.getElementById('cost'),
       subsidy: document.getElementById('subsidy'),
       context: document.getElementById('context'),
+      rowWall: document.getElementById('row-wall'),
       wall: document.getElementById('wall'),
+      wallLabel: document.getElementById('wall-label'),
+      rowSpan: document.getElementById('row-span'),
       span: document.getElementById('span'),
       sessions: document.getElementById('sessions'),
       tokensIn: document.getElementById('tokens-in'),
@@ -218,6 +221,8 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
       liveDot: document.getElementById('live-dot'),
       pricing: document.getElementById('pricing'),
     };
+
+    var EQUALITY_TOLERANCE_MS = 60 * 1000; // 1 minute
 
     function fmtRatio(r) { return (isFinite(r) && r > 0) ? r.toFixed(1) + '×' : '—'; }
     function fmtUsd(n) { return isFinite(n) ? '$' + n.toFixed(2) : '$—'; }
@@ -247,8 +252,22 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
         ? Math.round(snap.subsidyMultiplier) + '× plan'
         : '—';
       els.context.textContent = fmtDuration(a.sessionContextMs);
-      els.wall.textContent = fmtDuration(a.wallClockWindowMs);
-      els.span.textContent = fmtDuration(a.spanMs);
+      // Collapse the wall and span rows when they're essentially equal —
+      // a continuous-overlap day has nothing to differentiate, so show
+      // one row labeled "wall · span (continuous)" and hide the other.
+      var wallMs = a.wallClockWindowMs || 0;
+      var spanMs = a.spanMs || 0;
+      var continuous = wallMs > 0 && Math.abs(wallMs - spanMs) <= EQUALITY_TOLERANCE_MS;
+      if (continuous) {
+        els.wallLabel.innerHTML = 'wall · span<span class="sub">continuous</span>';
+        els.wall.textContent = fmtDuration(wallMs);
+        els.rowSpan.style.display = 'none';
+      } else {
+        els.wallLabel.textContent = 'wall (merged)';
+        els.wall.textContent = fmtDuration(wallMs);
+        els.rowSpan.style.display = '';
+        els.span.textContent = fmtDuration(spanMs);
+      }
       els.sessions.textContent = String(a.sessions ? a.sessions.length : 0);
       els.tokensIn.textContent = fmtCount(a.inputTokens);
       els.tokensOut.textContent = fmtCount(a.outputTokens);
