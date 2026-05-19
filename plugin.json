@@ -1,0 +1,24 @@
+{
+  "name": "parallel-burn",
+  "version": "0.0.1",
+  "description": "Surfaces parallelism, cache discipline, and retail-price cost from your Claude Code sessions. Localhost overlay for OBS browser-source rendering.",
+  "displayName": "ParallelBurn",
+  "author": {
+    "name": "Michael Tiller",
+    "email": "metagrue@gmail.com",
+    "url": "https://github.com/LlamaBrain"
+  },
+  "homepage": "https://github.com/LlamaBrain/parallel-burn",
+  "repository": "https://github.com/LlamaBrain/parallel-burn",
+  "license": "Apache-2.0",
+  "keywords": [
+    "claude-code",
+    "observability",
+    "parallel",
+    "cache",
+    "cost",
+    "obs",
+    "overlay"
+  ],
+  "hooks": {}
+}
