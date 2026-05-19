@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-19
+
+The localhost server + OBS browser-source overlay. Point an OBS browser
+source at `http://127.0.0.1:37337/overlay` and you get a dark,
+monospace, parallelism-first card that updates live.
+
+### Added
+
+- `ADRs/0005-sse-not-websocket.md` — documents the decision to ship
+  Server-Sent Events instead of WebSocket (SPEC §9.3 said WS; ADR makes
+  the call). Zero runtime dependency; one-way push is what the use case
+  actually needs.
+- `src/server/server.ts` — `startServer({ port, pricingFile,
+  subscriptionDailyUsd, dailyStreakThresholdUsd })`. Four endpoints:
+  `GET /` (302 → /overlay), `GET /overlay`, `GET /api/today` (alias
+  `GET /api/current`), `GET /events` (SSE). Binds to 127.0.0.1 only.
+  Heartbeats every 15 s, polls the aggregator every 5 s, broadcasts on
+  every change. Built on `node:http` alone — no runtime deps.
+- `src/server/overlay.ts` — embedded single-file HTML/CSS/JS overlay.
+  Dark `#0d0d10` background, monospace, soft-orange accent (`#e8a04f`).
+  Three headline rows in priority order — **parallelism · today ·
+  streak** — plus cache discipline as a fourth secondary row, and a
+  live-status footer. Auto-reconnects via `EventSource`.
+- `src/cli/serve.ts` — long-running CLI (`node dist/cli/serve.js`)
+  that reads `~/.parallel-burn/config.json`, spins up the server, and
+  prints the overlay URL. Handles SIGINT/SIGTERM gracefully.
+- 7 new Vitest tests in `tests/server.test.ts`. Spins up the server on
+  an ephemeral port, hits each endpoint with `fetch`, confirms response
+  shapes, the 127.0.0.1-only binding, and that `/events` delivers an
+  initial SSE message. **`src/server/overlay.ts` at 100 % coverage;
+  `src/server/server.ts` at 86.9 % — the uncovered lines are timer-tick
+  callbacks and defensive error paths that aren't worth wiring elaborate
+  timing tests for.**
+- 225 tests total. The full `src/core/` and `src/cli/` modules
+  remain at 100 % statement / function / line coverage.
+
+### Changed
+
+- `package.json` and `plugin.json` version → `0.5.0`.
+
+### Verified
+
+- `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean.
+- 225 Vitest tests pass.
+- **Live smoke test:** `node dist/cli/serve.js` boots in <100 ms,
+  binds 127.0.0.1:37337, prints `parallel-burn overlay:
+  http://127.0.0.1:37337/overlay`. `curl http://127.0.0.1:37337/api/today`
+  returns the full live snapshot JSON with the expected shape.
+
+[0.5.0]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.5.0
+
 ## [0.4.0] — 2026-05-19
 
 The end-of-session summary — the "artifact users screenshot and share"
@@ -347,5 +398,5 @@ machine.
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.5.0...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1

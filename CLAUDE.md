@@ -13,8 +13,9 @@ Phase 3 (hooks + transcript-derived data plane) — **complete** at `v0.1.0`.
 Phase 4 (aggregator + compression + streak) — **complete** at `v0.2.0`.
 Phase 5 (slash commands + statusline) — **complete** at `v0.3.0`.
 Phase 6 (end-of-session markdown summary) — **complete** at `v0.4.0`.
+Phase 7 (localhost server + OBS overlay) — **complete** at `v0.5.0`.
 
-Phase 7 (localhost server + OBS overlay) — **next**.
+Phase 8 (distribution prep, README rewrite, marketplace submission) — **next**.
 
 ### Begin Phase 2 by
 
