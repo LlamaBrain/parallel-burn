@@ -20,13 +20,14 @@ to produce.
 
 ## What you get
 
-| Surface                  | Where                                                       |
-| ------------------------ | ----------------------------------------------------------- |
-| `/parallel-burn`         | Live session + today's aggregate, rendered in chat          |
-| `/streak`                | Current streak count, last-30-day calendar                  |
-| **Status bar**           | Single-line summary below Claude Code's input area          |
-| **OBS browser source**   | `http://127.0.0.1:37337/overlay` — dark, monospace card     |
-| **End-of-session summary** | `~/.parallel-burn/summaries/YYYY-MM-DD-HHMM.md` on close   |
+| Surface                    | Where                                                       |
+| -------------------------- | ----------------------------------------------------------- |
+| `/parallel-burn`           | Live session + today's aggregate, rendered in chat          |
+| `/streak`                  | Current streak count, last-30-day calendar                  |
+| `/parallel-burn-backfill`  | One-shot scan of prior Claude Code sessions — run once after install |
+| **Status bar**             | Single-line summary below Claude Code's input area          |
+| **OBS browser source**     | `http://127.0.0.1:37337/overlay` — dark, monospace card     |
+| **End-of-session summary** | `~/.parallel-burn/summaries/YYYY-MM-DD-HHMM.md` on close    |
 
 The five core metrics, in priority order:
 
