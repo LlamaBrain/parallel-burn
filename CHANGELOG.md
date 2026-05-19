@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] — 2026-05-19
+
+Adds the **backfill** command — the missing piece for users (like the
+author) who install ParallelBurn after running Claude Code for a while.
+Backfill scans `~/.claude/projects/` and synthesizes a `SessionManifest`
+for every Claude Code transcript that doesn't already have one. Same RC
+gating as `rc.1` — stable `1.0.0` still requires human verification of
+the live-hook firing path.
+
+### Added
+
+- `src/core/backfill.ts` — async `discoverTranscripts` generator that
+  walks every `<encoded-cwd>/<session-id>.jsonl` and extracts the
+  `cwd`, first/last timestamp, and assistant-message count from each
+  file (capped at 5 000 lines of scan per transcript so it stays fast
+  on multi-MB files). `backfillMissingManifests` is the integration
+  layer: for every discovered session not already tracked, synthesize a
+  manifest. Existing manifests are skipped — backfill is idempotent.
+- `src/cli/backfill.ts` — `parallel-burn-backfill` CLI. Flags:
+  `--leave-open` (treat every backfilled session as still-active by
+  leaving `ended_at: null`; default sets `ended_at` from the last
+  transcript timestamp); `--quiet` / `-q` (skip per-session log lines).
+  `renderBackfillReport` is the pure terminal formatter, table-tested.
+- `commands/parallel-burn-backfill.md` — the matching Claude Code slash
+  command shim. `/parallel-burn-backfill` from within a session.
+- `bin` entry: `parallel-burn-backfill` → `dist/cli/backfill.js`.
+- 19 new Vitest tests across `tests/backfill.test.ts`: discovery edge
+  cases, idempotency (skip-when-already-tracked), the `--leave-open`
+  flag, malformed-line tolerance, the `projectNameFromCwd` extractor,
+  and the CLI renderer's singular/plural correctness.
+- **Real-world smoke** on the author's machine: backfill discovered
+  **3,115 historical sessions**, and the overlay immediately lit up
+  with concrete numbers — 64 sessions today, 1.95× compression,
+  $2,445.77 retail, 18-day streak, 366× subsidy multiplier, with a
+  ranked per-project breakdown. The data plane worked all along; it
+  just needed manifests pointing at the transcripts.
+
+### Changed
+
+- `package.json` and `plugin.json` version → `1.0.0-rc.2`.
+
+### Verified (automated)
+
+- `tsc --strict` clean, `eslint --quiet` clean, `npm run build` clean.
+- 237 Vitest tests pass. `src/core/backfill.ts` at 100 % function /
+  line, 95.93 % statement, 78 % branch (the missing branches are
+  cross-platform `stat` paths that don't trigger on the author's
+  machine).
+
+### Still awaiting human verification
+
+- All seven live-integration surfaces from `rc.1` (hooks firing from
+  Claude Code, plugin install path, etc.) remain TBD.
+
+[1.0.0-rc.2]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v1.0.0-rc.2
+
 ## [1.0.0-rc.1] — 2026-05-19
 
 **Release candidate.** All eight SPEC.md §10 phases are shipped to disk
@@ -461,5 +517,5 @@ machine.
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v1.0.0-rc.1...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v1.0.0-rc.2...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1
