@@ -26,6 +26,7 @@ import {
   writeManifest,
 } from "../src/core/manifest.js";
 import { PricingProvider, type PricingDocument } from "../src/core/pricing.js";
+import { dateOf } from "../src/core/streak.js";
 
 const PRICING_DOC: PricingDocument = {
   schema_version: "1.0",
@@ -231,6 +232,52 @@ describe("rollUpDay", () => {
     expect(day.cacheReadTokens).toBe(150);
     expect(day.cacheWriteTokens).toBe(15);
     expect(day.cacheDisciplineRatio).toBeCloseTo(10);
+  });
+
+  it("cacheHitPercent is zero for an empty day", () => {
+    const day = rollUpDay("2026-05-19", []);
+    expect(day.cacheHitPercent).toBe(0);
+  });
+
+  it("cacheHitPercent uses cacheRead / (input + cacheWrite + cacheRead)", () => {
+    // cache-creation (cacheWrite) is a *miss*: those tokens had to be re-prompted
+    // to populate the cache. Excluding them would make the metric asymptote to
+    // ~100% after the first few cache-priming turns of any long session and
+    // lose all signal. This test pins the corrected formula.
+    const sessions = [
+      sess({
+        id: "a",
+        project: "p",
+        startedAt: "2024-01-15T10:00:00Z",
+        endedAt: "2024-01-15T11:00:00Z",
+        cost: 0,
+        inT: 100,
+        cacheReadT: 900,
+        cacheWriteT: 50,
+      }),
+    ];
+    const day = rollUpDay("2024-01-15", sessions);
+    // 900 / (100 + 50 + 900) = 900 / 1050 ≈ 85.714286
+    expect(day.cacheHitPercent).toBeCloseTo(85.714286, 4);
+  });
+
+  it("extends the latest interval to nowMs when the day is today", () => {
+    // dateOf uses local timezone — compute today from nowMs so the test passes
+    // in any TZ. Session [10:00, 11:00] on today extends to nowMs (18:00) = 8h.
+    const nowMs = Date.parse("2026-05-19T18:00:00Z");
+    const today = dateOf(new Date(nowMs).toISOString());
+    const sessions = [
+      sess({
+        id: "ongoing",
+        project: "p",
+        startedAt: `${today}T10:00:00Z`,
+        endedAt: `${today}T11:00:00Z`,
+        cost: 0,
+      }),
+    ];
+    const day = rollUpDay(today, sessions, nowMs);
+    const eightHours = 8 * 60 * 60 * 1000;
+    expect(day.wallClockWindowMs).toBe(eightHours);
   });
 
   it("yields zeroed metrics for an empty day", () => {

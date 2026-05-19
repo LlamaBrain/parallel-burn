@@ -71,7 +71,15 @@ export type DailyAggregate = {
   readonly cacheWriteTokens: number;
   /** cacheReadTokens / cacheWriteTokens — how hard the cache is working. */
   readonly cacheDisciplineRatio: number;
-  /** cacheReadTokens / (inputTokens + cacheReadTokens) — fraction of prompt input served from cache, as a percent in [0, 100]. */
+  /**
+   * cacheReadTokens / (inputTokens + cacheWriteTokens + cacheReadTokens) — fraction of all
+   * prompt-input bytes served from cache, as a percent in [0, 100].
+   *
+   * cacheWriteTokens is in the denominator because cache-creation is a *miss* — those
+   * tokens had to be re-prompted to Anthropic to populate the cache, not served from it.
+   * Excluding cacheWrite would make the metric asymptote to 100% after the first few
+   * cache-priming turns of any long session and lose all signal.
+   */
   readonly cacheHitPercent: number;
 };
 
@@ -301,7 +309,7 @@ export function rollUpDay(
     .map(([project, agg]) => ({ project, ...agg }))
     .sort((a, b) => b.costUsd - a.costUsd);
   const cacheDisciplineRatio = totalCacheWrite > 0 ? totalCacheRead / totalCacheWrite : 0;
-  const promptInputDenominator = totalInput + totalCacheRead;
+  const promptInputDenominator = totalInput + totalCacheWrite + totalCacheRead;
   const cacheHitPercent =
     promptInputDenominator > 0 ? (totalCacheRead / promptInputDenominator) * 100 : 0;
 

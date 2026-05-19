@@ -82,6 +82,25 @@ describe("server HTTP endpoints", () => {
     });
   });
 
+  it("overlay HTML exposes the element IDs the live updater targets", async () => {
+    // The live updater (inline script in the overlay) targets specific element
+    // IDs via getElementById. Renaming or removing any of these IDs silently
+    // breaks the overlay without breaking the build. This pins them.
+    await withServer(async (handle) => {
+      const res = await fetch(`${urlOf(handle)}/overlay`);
+      const body = await res.text();
+      // cache-hit replaced subsidy in the overlay header row.
+      expect(body).toContain('id="cache-hit"');
+      // wall/span collapse logic toggles row-span display and rewrites
+      // wall-label depending on whether wall and span agree.
+      expect(body).toContain('id="row-wall"');
+      expect(body).toContain('id="row-span"');
+      expect(body).toContain('id="wall-label"');
+      expect(body).toContain('id="wall"');
+      expect(body).toContain('id="span"');
+    });
+  });
+
   it("returns JSON at /api/today with the live snapshot shape", async () => {
     await withServer(async (handle) => {
       const res = await fetch(`${urlOf(handle)}/api/today`);
@@ -93,6 +112,14 @@ describe("server HTTP endpoints", () => {
       expect(typeof snap["streak"]).toBe("number");
       expect(typeof snap["pricingAsOf"]).toBe("string");
       expect(typeof snap["pricingStale"]).toBe("boolean");
+      // Live-snapshot fields the overlay updater depends on. Regression guard
+      // against accidental field removal during refactors.
+      expect(typeof snap["computedAt"]).toBe("string");
+      const agg = snap["aggregate"] as Record<string, unknown>;
+      expect(typeof agg["cacheHitPercent"]).toBe("number");
+      expect(typeof agg["spanMs"]).toBe("number");
+      expect(typeof agg["wallClockWindowMs"]).toBe("number");
+      expect(typeof agg["cacheDisciplineRatio"]).toBe("number");
     });
   });
 

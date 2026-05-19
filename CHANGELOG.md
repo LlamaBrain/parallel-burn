@@ -9,9 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `DailyAggregate.cacheHitPercent` — fraction of prompt input served
-  from cache, computed as `cacheReadTokens / (inputTokens + cacheReadTokens) * 100`.
-  Surfaced on the overlay in place of the subsidy multiplier.
+- `DailyAggregate.cacheHitPercent` — fraction of prompt-input bytes served
+  from cache, computed as
+  `cacheReadTokens / (inputTokens + cacheWriteTokens + cacheReadTokens) * 100`.
+  `cacheWriteTokens` (cache-creation) is in the denominator because creating
+  a new cache entry is a *miss*: those tokens had to be re-prompted to
+  populate the cache, not served from it. Excluding `cacheWriteTokens`
+  would make the metric asymptote to ~100% after the first few cache-priming
+  turns of any long session. Surfaced on the overlay in place of the
+  subsidy multiplier.
 
 ### Changed
 
