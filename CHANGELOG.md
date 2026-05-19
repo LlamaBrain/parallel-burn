@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-05-19
+
+First feature release. ParallelBurn can now observe a Claude Code session
+end-to-end: hooks record the session boundary on disk, the transcript
+reader projects assistant turns into typed `MessageEvent`s, and the cost
+calculator (from 0.0.3) prices them against the rate card. Smoke-tested
+against a real `~/.claude/projects/.../<session>.jsonl` on the author's
+machine.
+
+### Added
+
+- `ADRs/0004-transcript-path-encoding.md` — pins the load-bearing
+  assumption that Claude Code's `~/.claude/projects/<encoded-cwd>/`
+  directory name is the absolute working-directory path with every
+  occurrence of `[:\\/.]` replaced by `-`. Verified against multiple
+  real entries on the operator's machine.
+- `src/core/paths.ts` — single source of truth for both `~/.parallel-burn/`
+  (our data root) and `~/.claude/projects/<encoded>/<session>.jsonl`
+  (Claude Code's transcripts). Cross-platform symmetric encoding per
+  ADR-0004.
+- `src/core/store.ts` — atomic write primitives. `writeJsonAtomic` uses
+  tmp-file-and-rename and cleans up the temp on serialization failure
+  (the prior file stays intact). `appendJsonLine` uses `O_APPEND` + a
+  single `write(2)` for cross-process-safe JSONL appends under the
+  PIPE_BUF limit. `readJsonOptional` returns `null` for `ENOENT` and
+  propagates everything else.
+- `src/core/manifest.ts` — `SessionManifest` (schema_version 1.0,
+  session_id / project / cwd / transcript_path / started_at /
+  last_seen_active / ended_at) plus a strict parser/validator with
+  branded-ID checks.
+- `src/core/transcript.ts` — async transcript reader that ingests
+  Claude Code's JSONL line-by-line, silently skips malformed or
+  uninteresting records (per SPEC §10 Phase 3 crash-resistance), and
+  projects each well-formed `type: "assistant"` entry into a typed
+  `MessageEvent` matching SPEC §7.1. Survives missing trailing
+  newlines, partial usage blocks, and negative/NaN token counts.
+- `src/hooks/_lib.ts` — shared hook helpers: `readStdinJson` (text-mode,
+  TTY-safe, never throws), `runHook` (catches every error so Claude
+  Code never sees a non-zero exit; always prints
+  `{"continue":true,"suppressOutput":true}` on stdout), `isEntryPoint`
+  (so test imports don't trigger the auto-run), `readString`.
+- `src/hooks/session-start.ts`, `src/hooks/post-tool-use.ts`,
+  `src/hooks/session-end.ts` — the three Claude Code hook entrypoints.
+  Each splits a pure `buildXxxManifest(payload, prior?, now)` decision
+  function (table-tested in `tests/hooks.test.ts`) from the side-effectful
+  read/write glue. PostToolUse synthesizes a manifest if SessionStart was
+  missed (so a session that started before parallel-burn was installed
+  is still partially captured). SessionEnd is a no-op if there's no prior
+  manifest or it's already finalized.
+- `plugin.json` — hooks declared in the correct keyed-by-event shape
+  (see ADR-0003 / the verified Claude Code reference). Each entry
+  invokes the compiled `dist/hooks/*.js` via `node` with
+  `${CLAUDE_PLUGIN_ROOT}` as the plugin install root.
+- 70 new Vitest tests across `paths`, `store`, `manifest`, `transcript`,
+  and `hooks`. **110 tests total. 100 % statement / branch / function /
+  line coverage on every file in `src/core/`** (eight modules: cost,
+  event, ids, manifest, paths, pricing, store, transcript).
+
+### Changed
+
+- `package.json` and `plugin.json` version → `0.1.0`.
+
+### Verified
+
+- `tsc --strict` clean (with `noUncheckedIndexedAccess`,
+  `exactOptionalPropertyTypes`, `verbatimModuleSyntax`).
+- `eslint --quiet` clean under typescript-eslint v8 typed rules.
+- All 110 Vitest tests pass.
+- **Smoke-tested against a real Claude Code transcript**: `node` invoking
+  the compiled SessionStart hook writes a valid manifest to
+  `~/.parallel-burn/data/sessions/<id>.meta.json`; the transcript reader
+  consumes the live session's JSONL and the cost calculator produces a
+  plausible retail-USD total against the shipped `pricing.json`.
+
+[0.1.0]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.1.0
+
 ## [0.0.3] — 2026-05-19
 
 ### Added
@@ -104,5 +180,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - All `src/` modules. Phase 1 (typed IDs and pricing infrastructure) begins next; see SPEC.md section 10.
 
-[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/LlamaBrain/parallel-burn/compare/v0.1.0...HEAD
 [0.0.1]: https://github.com/LlamaBrain/parallel-burn/releases/tag/v0.0.1

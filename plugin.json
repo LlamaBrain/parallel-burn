@@ -1,6 +1,6 @@
 {
   "name": "parallel-burn",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Surfaces parallelism, cache discipline, and retail-price cost from your Claude Code sessions. Localhost overlay for OBS browser-source rendering.",
   "displayName": "ParallelBurn",
   "author": {
@@ -20,5 +20,39 @@
     "obs",
     "overlay"
   ],
-  "hooks": {}
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/session-start.js\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/post-tool-use.js\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/session-end.js\""
+          }
+        ]
+      }
+    ]
+  }
 }
