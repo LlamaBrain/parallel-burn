@@ -1,23 +1,16 @@
 # Roadmap
 
-Tracks work between the current release candidate (`v1.0.0-rc.15`)
+Tracks work between the current release candidate (`v1.0.0-rc.17`)
 and a stable `v1.0.0` cut.
 
 ## 1.0 stable release blockers
 
-These must be resolved before the stable tag — see CHANGELOG.md
-"Awaiting human verification" section for the broader checklist.
-
-### Cost accuracy (the user-facing dollar number must be trustworthy)
-
-- [x] **Cost reconciliation against Anthropic.** Two-path procedure
-  documented at `verification/cost-reconciliation.md`. Path A
-  (console comparison) for API-billing operators; Path B
-  (rate-card verification + hand-computed spot check) for
-  subscription operators. **Path B passed on rc.16** — rc.15 had
-  Opus 4.5/4.6/4.7 at 3× the real rate; rc.16 corrected it;
-  hand-compute on a Sonnet 4.5 session matched to the sixth
-  decimal.
+**All blockers resolved as of rc.17.** Cost reconciliation passed
+via Path B on rc.16; the rc.16 rate-card fix is locked in;
+hand-compute matches to the sixth decimal. The stable `v1.0.0`
+tag is the operator's call to cut (per CLAUDE.md memory: "green
+tests ≠ ready for stable" — but a human has now verified the
+live integration too).
 
 ## Backlog
 
