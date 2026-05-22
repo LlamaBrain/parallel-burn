@@ -10,9 +10,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
 
 ### Cost accuracy (the user-facing dollar number must be trustworthy)
 
-- [ ] **Missing model coverage in pricing.json.** `claude-sonnet-4-5`
-  family is entirely absent — only `claude-sonnet-4-6` is keyed.
-  41 of today's sessions ran on Sonnet 4.5. Add the missing entries.
 - [ ] **Audit the unknown-model fallback.** CLAUDE.md says "log a
   warning and use a conservative fallback" but the actual fallback
   rate and direction (errs high vs. low) is not documented or

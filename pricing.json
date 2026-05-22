@@ -25,6 +25,20 @@
       "cache_write_1h_per_mtok": 6.00,
       "cache_read_per_mtok": 0.30
     },
+    "claude-opus-4-5": {
+      "input_per_mtok": 15.00,
+      "output_per_mtok": 75.00,
+      "cache_write_5m_per_mtok": 18.75,
+      "cache_write_1h_per_mtok": 30.00,
+      "cache_read_per_mtok": 1.50
+    },
+    "claude-sonnet-4-5": {
+      "input_per_mtok": 3.00,
+      "output_per_mtok": 15.00,
+      "cache_write_5m_per_mtok": 3.75,
+      "cache_write_1h_per_mtok": 6.00,
+      "cache_read_per_mtok": 0.30
+    },
     "claude-haiku-4-5": {
       "input_per_mtok": 1.00,
       "output_per_mtok": 5.00,

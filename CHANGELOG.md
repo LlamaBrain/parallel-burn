@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.9] — 2026-05-22
+
+**Sonnet 4.5 and Opus 4.5 added to pricing.json.** Survey of today's
+in-flight transcripts surfaced both families in active use
+(`claude-sonnet-4-5-20250929`, `claude-opus-4-5-20251101`), but
+neither family root was in the rate card — every session ran on
+those models was billing at the conservative fallback rather than
+the real tier rate, regardless of the rc.8 normalization. With
+rc.9 the date-suffixed IDs strip to a key that now exists.
+
+### Pricing
+
+- `claude-opus-4-5`: rates extrapolated from `claude-opus-4-7` /
+  `claude-opus-4-6` — Anthropic's Opus-tier pricing has been
+  consistent across model generations.
+- `claude-sonnet-4-5`: rates extrapolated from `claude-sonnet-4-6`
+  on the same logic.
+
+Both are tier-extrapolations, not directly verified from an
+Anthropic invoice; the manual-reconciliation blocker on the
+roadmap is the canonical check. `pricingAsOf` left at `2026-05-19`
+because the underlying tier rates have not been re-sourced; only
+new keys were added.
+
 ## [1.0.0-rc.8] — 2026-05-22
 
 **Date-suffixed model IDs now resolve to family rates.** Anthropic's
