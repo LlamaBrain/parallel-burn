@@ -11,7 +11,7 @@
 // into a typed `MessageEvent` matching SPEC.md §7.1.
 
 import { createReadStream, type ReadStream } from "node:fs";
-import { basename } from "node:path";
+import { win32 as winPath } from "node:path";
 import { createInterface } from "node:readline";
 
 import {
@@ -103,7 +103,9 @@ function projectAssistantEntry(raw: unknown): MessageEvent | null {
   if (!isMessageId(messageIdRaw)) return null;
   if (!isSessionId(sessionIdRaw)) return null;
 
-  const projectName = basename(cwd);
+  // win32.basename so a Windows cwd ("E:\Personal\foo") is parsed
+  // correctly on a Linux CI runner. Accepts both `/` and `\` on any host.
+  const projectName = winPath.basename(cwd);
   if (!isProjectId(projectName)) return null;
 
   const projectedUsage = projectUsage(usage);
