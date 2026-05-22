@@ -10,12 +10,11 @@ These must be resolved before the stable tag — see CHANGELOG.md
 
 ### Cost accuracy (the user-facing dollar number must be trustworthy)
 
-- [ ] **Manual reconciliation against Anthropic console.** Pull at
-  least three distinct days' real console totals, compare to
-  ParallelBurn's `totalCostUsd` for the same operator. Tolerance:
-  within 1 %. Diverge wider → root-cause before tagging stable.
-  Document the procedure under `verification/cost-reconciliation.md`
-  so it can be re-run on future release candidates.
+- [ ] **Manual reconciliation against Anthropic console.** Procedure
+  is documented at `verification/cost-reconciliation.md` (rc.11).
+  Three rows of the results table must be filled in within 1 %
+  tolerance before tagging stable. Operator action required —
+  needs Anthropic-console access.
 - [ ] **Subagent double-count audit.** Today 12 `agent-*` sessions
   contribute `$0.00`. This could be correct (parent transcript
   already counts subagent tokens, so the subagent manifest is a

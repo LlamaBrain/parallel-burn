@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.11] — 2026-05-22
+
+**Cost-reconciliation procedure documented.** Adds
+`verification/cost-reconciliation.md`, a step-by-step runbook for
+comparing parallel-burn's `totalCostUsd` against the Anthropic
+console for the same operator on the same day. Includes timezone
+caveats, what divergence directions indicate (high + nonzero
+`unknownModelSessionCount` → fallback inflation), and an
+append-only results-log table for tracking reconciliation across
+release candidates. Three rows within 1 % tolerance gates the
+stable v1.0.0 tag.
+
 ## [1.0.0-rc.10] — 2026-05-22
 
 **Unknown-model fallback policy is now named, asserted, and
