@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.15] — 2026-05-22
+
+**Cache-hit % gains a second decimal near saturation.** Plain
+`.toFixed(1)` collapses 99.94 → 100.0, which hides drift across
+the saturation line — the operator can't tell whether their cache
+is at perfect saturation or merely close. rc.15 switches the
+overlay's renderer to two decimals for values ≥ 99, one decimal
+below.
+
+### Changed
+
+- `src/server/overlay.ts` — new `fmtCacheHit(p)` JS-side
+  formatter. Sub-99 displays unchanged (e.g. `98.3%`); ≥ 99 now
+  surfaces the second decimal (e.g. `99.94%`, `99.98%`, `100.00%`).
+
 ## [1.0.0-rc.14] — 2026-05-22
 
 **`GET /api/day?date=YYYY-MM-DD` for browser-driven reconciliation.**

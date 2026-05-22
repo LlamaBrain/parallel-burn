@@ -225,6 +225,14 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
     var EQUALITY_TOLERANCE_MS = 60 * 1000; // 1 minute
 
     function fmtRatio(r) { return (isFinite(r) && r > 0) ? r.toFixed(1) + '×' : '—'; }
+    // Cache hit lives near saturation on healthy days. Plain toFixed(1)
+    // collapses 99.94 → 100.0, hiding drift across the saturation line.
+    // For values ≥ 99 we widen to two decimals so 99.94 stays distinct
+    // from 100.00; below that, one decimal is enough resolution.
+    function fmtCacheHit(p) {
+      if (p >= 99) return p.toFixed(2) + '%';
+      return p.toFixed(1) + '%';
+    }
     function fmtUsd(n) { return isFinite(n) ? '$' + n.toFixed(2) : '$—'; }
     function fmtDuration(ms) {
       if (!isFinite(ms) || ms <= 0) return '0m';
@@ -249,7 +257,7 @@ export const OVERLAY_HTML = `<!DOCTYPE html>
       els.compression.textContent = fmtRatio(a.compressionRatio);
       els.cost.textContent = fmtUsd(a.totalCostUsd);
       els.cacheHit.textContent = isFinite(a.cacheHitPercent) && a.cacheHitPercent >= 0
-        ? a.cacheHitPercent.toFixed(1) + '%'
+        ? fmtCacheHit(a.cacheHitPercent)
         : '—';
       els.context.textContent = fmtDuration(a.sessionContextMs);
       // Collapse the wall and span rows when they're essentially equal —

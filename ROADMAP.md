@@ -18,11 +18,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
 
 ## Near-term (post-1.0 if necessary, but ideally before)
 
-- [ ] **Cache-hit % rounding.** Now that the formula is fixed
-  (`cacheRead / (input + cacheWrite + cacheRead)`), values at the
-  high end can still display as `100.0%`. Show 3 significant
-  figures (`99.94%`) so operators can see drift across the
-  saturation threshold rather than a flatlined `100%`.
 
 ## Backlog
 
