@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.6] — 2026-05-22
+
+**Server autostart from SessionStart.** Until rc.6, the localhost
+server had to be launched by the operator (`parallel-burn serve`
+or `node dist/cli/serve.js`) and lived across sessions as a
+manually-managed long-running process. The overlay, statusline,
+and any SSE consumer silently degraded when it wasn't running,
+and there was no signal to the operator that they had forgotten.
+Hook discovery (rc.5) was a prerequisite — without a working
+SessionStart there was nowhere to put the spawn logic.
+
+### Added
+
+- **`src/core/ensure-server.ts`** — `isPortListening(port)` does a
+  ~250ms TCP probe against 127.0.0.1; `ensureServerRunning(opts)`
+  spawns `dist/cli/serve.js` as a detached, unref'd child when
+  the probe fails. The child inherits no stdio from the parent
+  (logs append to `~/.parallel-burn/logs/server.log`), so the
+  hook process exits immediately and the server survives.
+  Spawn-time `cwd` is the plugin root so the server's default
+  `./pricing.json` resolution works.
+- SessionStart hook now calls `ensureServerRunning` after writing
+  the manifest. Re-running the hook is a no-op when the port is
+  already listening — including when *another* parallel-burn
+  session started the server, which is the common case on a
+  multi-session day.
+- Vitest coverage for `isPortListening` (real ephemeral listener
+  for the positive case, no-listener and listener-closed for the
+  negative cases) and `ensureServerRunning` (injected probe and
+  spawner so tests never actually fork node).
+
+### Notes
+
+- SessionEnd does *not* stop the server — it is a per-machine
+  resource, not a per-session one. An operator who wants the
+  server gone can Ctrl-C it or kill the PID.
+- The probe assumes whatever is listening on the configured port
+  is parallel-burn (or some service the operator wants to leave
+  alone). If a third party stole port 37337, we skip the spawn
+  and the overlay quietly fails. Pick a different port in
+  `~/.parallel-burn/config.json` if that bites.
+
 ## [1.0.0-rc.5] — 2026-05-22
 
 **Hook discovery fix for Windows.** rc.4 declared hooks in the root

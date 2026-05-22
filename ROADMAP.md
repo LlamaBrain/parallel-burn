@@ -55,21 +55,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
   backfill` populates the data plane, which defeats the live
   overlay and statusline guarantees the SPEC promises.
 
-### Server lifecycle
-
-- [ ] **Server must autostart.** Today the server has to be launched
-  separately (`parallel-burn serve` or `node dist/cli/serve.js`) and
-  survives across sessions as a manually-managed long-running
-  process. The overlay, statusline, and any SSE consumer all
-  silently degrade when it isn't running, and there's no signal to
-  the operator that they forgot. SessionStart hook should
-  ensure-running with an idempotent spawn: bail if the configured
-  port is already listening, otherwise fork a detached server
-  process and let it survive past this session. SessionEnd does
-  *not* stop it — the server is a per-machine resource, not a
-  per-session one. Without this, every "live" surface the SPEC
-  promises is operator-discipline-gated, which defeats the point.
-
 ## Near-term (post-1.0 if necessary, but ideally before)
 
 - [ ] **Local-install dev workflow.** `npm run build` refreshes the

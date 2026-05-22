@@ -7,8 +7,11 @@
 // session overwrites the manifest with a new `started_at`, which is the
 // correct behavior if Claude Code legitimately re-emits SessionStart.
 
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { readConfig } from "../core/config.js";
+import { ensureServerRunning } from "../core/ensure-server.js";
 import { makeProjectId, makeSessionId } from "../core/ids.js";
 import {
   SESSION_MANIFEST_SCHEMA_VERSION,
@@ -49,6 +52,15 @@ export function buildStartManifest(
   };
 }
 
+/**
+ * Resolve the plugin root from this module's own location. session-start.js
+ * lives at `<plugin-root>/dist/hooks/session-start.js`, so three `dirname`s
+ * climb back to the plugin root.
+ */
+function pluginRootFromModuleUrl(moduleUrl: string): string {
+  return dirname(dirname(dirname(fileURLToPath(moduleUrl))));
+}
+
 if (isEntryPoint(import.meta.url)) {
   runHook("session-start", async () => {
     const payload = await readStdinJson();
@@ -56,5 +68,14 @@ if (isEntryPoint(import.meta.url)) {
     const manifest = buildStartManifest(payload, new Date());
     if (manifest === null) return;
     await writeManifest(parallelBurnSessionMetaPath(manifest.session_id), manifest);
+
+    const config = await readConfig();
+    const pluginRoot = pluginRootFromModuleUrl(import.meta.url);
+    const serveScriptPath = fileURLToPath(new URL("../cli/serve.js", import.meta.url));
+    await ensureServerRunning({
+      port: config.serverPort,
+      serveScriptPath,
+      pluginRoot,
+    });
   });
 }
