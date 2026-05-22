@@ -7,7 +7,7 @@
 // session overwrites the manifest with a new `started_at`, which is the
 // correct behavior if Claude Code legitimately re-emits SessionStart.
 
-import { basename, dirname } from "node:path";
+import { dirname, win32 as winPath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readConfig } from "../core/config.js";
@@ -36,7 +36,12 @@ export function buildStartManifest(
   const cwd = readString(payload, "cwd");
   if (sessionIdRaw === null || cwd === null) return null;
   const sessionId = makeSessionId(sessionIdRaw);
-  const projectName = basename(cwd);
+  // Use win32.basename for OS-tolerant path parsing. On Linux, plain
+  // `node:path.basename` doesn't recognize backslashes as separators, so
+  // a Windows cwd like `E:\Personal\parallel-burn` would slip through
+  // whole — breaking the project name on CI. win32 accepts both `/` and
+  // `\` and works on any host.
+  const projectName = winPath.basename(cwd);
   if (projectName.length === 0) return null;
   const project = makeProjectId(projectName);
   const iso = now.toISOString();

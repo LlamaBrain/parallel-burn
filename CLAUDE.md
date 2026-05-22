@@ -32,6 +32,14 @@ see `ROADMAP.md`.
 
 ## Working conventions
 
+- **Branching: `dev` is the de facto head; `main` is the stable-release
+  branch.** Ongoing work — every commit, every rc tag — lands on `dev`.
+  Only release-ready batches get merged into `main`, via PR. `main` is
+  branch-protected; do not push directly to it (the 1.0.0 cut and the
+  first CI commit went straight to main and should not have). The
+  release-tag convention: `v0.x.y` and `v1.x.y-rc.N` tags can live on
+  `dev` while iterating; the stable `vM.N.0` tag goes on the merge
+  commit that lands in `main`.
 - **TypeScript `--strict`.** No `any`. No `@ts-ignore` without a one-line comment justifying it.
 - **Typed IDs everywhere.** `SessionId`, `ProjectId`, `MessageId` are branded types. Stringly-typed IDs are bugs.
 - **ADRs for any non-obvious architectural decision.** Status: Accepted (or Proposed if you want feedback before implementing). Reference SPEC.md sections where helpful. Place under `ADRs/NNNN-title-in-kebab.md`.

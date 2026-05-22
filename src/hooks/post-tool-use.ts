@@ -10,7 +10,7 @@
 // the PostToolUse payload — better to capture a partial session than to
 // drop it.
 
-import { basename } from "node:path";
+import { win32 as winPath } from "node:path";
 
 import { makeProjectId, makeSessionId } from "../core/ids.js";
 import {
@@ -44,7 +44,8 @@ export function buildTouchedManifest(
   if (prior !== null) {
     return { ...prior, last_seen_active: iso };
   }
-  const projectName = basename(cwd);
+  // win32.basename so a Windows cwd is parsed correctly on Linux CI.
+  const projectName = winPath.basename(cwd);
   if (projectName.length === 0) return null;
   const project = makeProjectId(projectName);
   return {
