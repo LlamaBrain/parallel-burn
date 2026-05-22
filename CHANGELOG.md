@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.5] — 2026-05-22
+
+**Hook discovery fix for Windows.** rc.4 declared hooks in the root
+`plugin.json`, but the Claude Code harness on Windows did not pick
+them up — a fresh session on 2026-05-19 produced a transcript but
+no manifest, and neither SessionStart nor SessionEnd fired. The
+real-time data plane (manifest writes, end-of-session summary,
+overlay liveness) was effectively dead, leaving `parallel-burn
+backfill` as the only path that populated state. The reference
+working plugin (`claude-mem`) splits metadata into
+`.claude-plugin/plugin.json` and hooks into `hooks/hooks.json` at
+the plugin root; ParallelBurn now mirrors that layout.
+
+### Changed
+
+- **Plugin manifest layout.** Root `plugin.json` removed.
+  Metadata moved to `.claude-plugin/plugin.json` (no `hooks` block
+  there). Hooks moved to `hooks/hooks.json` under the
+  `{"description", "hooks"}` envelope claude-mem uses. The
+  `${CLAUDE_PLUGIN_ROOT}` command strings are unchanged — only
+  the file they live in moved.
+- **`package.json` `files`** updated: `plugin.json` removed,
+  `.claude-plugin/` and `hooks/` added so the new layout actually
+  ships in any future npm artifact.
+
 ### Added
 
 - `DailyAggregate.cacheHitPercent` — fraction of prompt-input bytes served
