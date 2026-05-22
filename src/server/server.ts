@@ -13,10 +13,11 @@
 
 import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
-import { aggregateDay, type DailyAggregate } from "../core/aggregator.js";
+import { aggregateDay, type DailyAggregate, listSessions } from "../core/aggregator.js";
 import {
   computeActiveStreak,
   computeLongestActiveStreak,
+  enrichDailyActivityWithRecent,
   readStatsCache,
 } from "../core/claude-stats.js";
 import { dateOf } from "../core/streak.js";
@@ -78,7 +79,7 @@ export async function buildSnapshot(config: ServerConfig): Promise<LiveSnapshot>
     ? { sessionsDir: config.sessionsDir }
     : {};
   const aggregate = await aggregateDay(today, pricing, aggregatorOptions);
-  const streakSnapshot = await computeStreakFromClaudeStats(today, aggregate);
+  const streakSnapshot = await computeStreakFromClaudeStats(today, aggregate, aggregatorOptions);
   const subsidyMultiplier =
     config.subscriptionDailyUsd > 0
       ? aggregate.totalCostUsd / config.subscriptionDailyUsd
@@ -108,13 +109,24 @@ export async function buildSnapshot(config: ServerConfig): Promise<LiveSnapshot>
 async function computeStreakFromClaudeStats(
   today: string,
   aggregate: DailyAggregate,
+  options: { sessionsDir?: string } = {},
 ): Promise<{ current: number; longest: number }> {
   const cache = await readStatsCache();
   if (cache === null) return { current: 0, longest: 0 };
   const todayHasActivity = aggregate.sessions.length > 0;
+  // Claude Code's stats-cache.json is recomputed offline and is typically
+  // 1+ days stale. Synthesize post-cache days from our own manifests so
+  // computeActiveStreak doesn't walk into a hole that truncates a real
+  // long streak to 1.
+  const recent = await listSessions(options).catch(() => []);
+  const enriched = enrichDailyActivityWithRecent(
+    cache.dailyActivity,
+    recent,
+    cache.lastComputedDate,
+  );
   return {
-    current: computeActiveStreak(today, cache.dailyActivity, todayHasActivity),
-    longest: computeLongestActiveStreak(cache.dailyActivity, today, todayHasActivity),
+    current: computeActiveStreak(today, enriched, todayHasActivity),
+    longest: computeLongestActiveStreak(enriched, today, todayHasActivity),
   };
 }
 
@@ -172,7 +184,7 @@ export async function startServer(config: ServerConfig): Promise<ServerHandle> {
         : {};
       const pricing = await PricingProvider.fromFile(config.pricingFile);
       const aggregate = await aggregateDay(today, pricing, aggregatorOptions);
-      cachedStreak = await computeStreakFromClaudeStats(today, aggregate);
+      cachedStreak = await computeStreakFromClaudeStats(today, aggregate, aggregatorOptions);
     } catch {
       // Keep the previous cache — better stale data than nothing.
     }

@@ -25,7 +25,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { readJsonOptional } from "./store.js";
-import { previousDay } from "./streak.js";
+import { dateOf, previousDay } from "./streak.js";
 
 const STATS_CACHE_RELATIVE_PATH = ".claude/stats-cache.json";
 const SUPPORTED_CACHE_VERSIONS: readonly number[] = [3];
@@ -195,4 +195,48 @@ export function computeLongestActiveStreak(
     prevDate = d;
   }
   return longest;
+}
+
+/** Subset of a SessionManifest sufficient for activity-day synthesis. */
+export type RecentSessionLike = {
+  readonly started_at: string;
+};
+
+/**
+ * Augment `dailyActivity` with entries synthesized from recent parallel-burn
+ * session manifests, for any local-date strictly after `lastComputedDate`.
+ * Claude Code recomputes stats-cache.json on its own schedule (often a day
+ * or more behind real time), so the post-cache days are missing from the
+ * map that `computeActiveStreak` walks — and without them a multi-day
+ * streak gets truncated to 1 the moment the cache falls one day behind.
+ *
+ * Manifests for dates ≤ lastComputedDate are dropped: the cache already
+ * counted those days and its session counts include subagent sessions
+ * that parallel-burn's manifests don't. `messageCount` and `toolCallCount`
+ * are zeroed in synthesized entries — only `sessionCount > 0` is what the
+ * streak walk needs.
+ */
+export function enrichDailyActivityWithRecent(
+  cached: readonly DailyActivity[],
+  recent: readonly RecentSessionLike[],
+  lastComputedDate: string,
+): DailyActivity[] {
+  // `dateOf` falls back to the first 10 chars of the input on an
+  // unparseable timestamp, so a value like "not-a-date" would slip
+  // through a length check. Reject anything that doesn't match the
+  // strict YYYY-MM-DD shape.
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const counts = new Map<string, number>();
+  for (const m of recent) {
+    if (!Number.isFinite(Date.parse(m.started_at))) continue;
+    const d = dateOf(m.started_at);
+    if (!DATE_RE.test(d) || d <= lastComputedDate) continue;
+    counts.set(d, (counts.get(d) ?? 0) + 1);
+  }
+  const out: DailyActivity[] = cached.slice();
+  for (const [date, sessionCount] of counts) {
+    out.push({ date, sessionCount, messageCount: 0, toolCallCount: 0 });
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  return out;
 }

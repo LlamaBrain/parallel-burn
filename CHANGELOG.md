@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.7] — 2026-05-22
+
+**Streak no longer truncates when `~/.claude/stats-cache.json` is
+stale.** Claude Code recomputes that cache on its own schedule —
+often a day or more behind real time. Before rc.7, the streak
+walk read the cache, stamped today as active via the override,
+and then broke on the first missing day between today and the
+cache's `lastComputedDate`. Result: a real 61-day active streak
+displayed as `1d` on any morning before the cache caught up. The
+data needed to fix it was already on disk in
+`~/.parallel-burn/data/sessions/` — we just weren't using it.
+
+### Added
+
+- **`enrichDailyActivityWithRecent`** in `claude-stats.ts`. Given
+  the cache's `dailyActivity`, parallel-burn's own session
+  manifests, and the cache's `lastComputedDate`, synthesizes
+  `DailyActivity` entries for each post-cache date by counting
+  manifests on that date. Cache entries are preserved verbatim —
+  the cache's session counts include subagent sessions that
+  parallel-burn's per-session manifests don't, so we only fill
+  in the gap, never overwrite.
+- Four tests covering synthesis, no-double-count on the cache
+  edge, a full integration with `computeActiveStreak`, and
+  rejection of manifests with unparseable timestamps.
+
+### Changed
+
+- **`computeStreakFromClaudeStats` in `server.ts`** now calls
+  `listSessions` and merges through `enrichDailyActivityWithRecent`
+  before walking. Both callers (`buildSnapshot` for HTTP and
+  `refreshStreakCache` for the slow tick) pass their
+  `aggregatorOptions` through so test seams keep working.
+
 ## [1.0.0-rc.6] — 2026-05-22
 
 **Server autostart from SessionStart.** Until rc.6, the localhost

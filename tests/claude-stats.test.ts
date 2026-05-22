@@ -8,6 +8,7 @@ import {
   computeActiveStreak,
   computeLongestActiveStreak,
   defaultStatsCachePath,
+  enrichDailyActivityWithRecent,
   parseStatsCache,
   readStatsCache,
   type DailyActivity,
@@ -233,5 +234,74 @@ describe("computeLongestActiveStreak", () => {
     }
     expect(computeLongestActiveStreak(activity)).toBe(56);
     expect(computeLongestActiveStreak(activity, "2026-05-19", true)).toBe(57);
+  });
+});
+
+describe("enrichDailyActivityWithRecent", () => {
+  const cached: readonly DailyActivity[] = [
+    { date: "2026-05-16", sessionCount: 5, messageCount: 10, toolCallCount: 20 },
+    { date: "2026-05-17", sessionCount: 7, messageCount: 14, toolCallCount: 28 },
+    { date: "2026-05-18", sessionCount: 3, messageCount: 6, toolCallCount: 12 },
+  ];
+
+  it("synthesizes a sessionCount for each post-cache date", () => {
+    const recent = [
+      { started_at: "2026-05-19T10:00:00Z" },
+      { started_at: "2026-05-19T11:00:00Z" },
+      { started_at: "2026-05-20T09:00:00Z" },
+      { started_at: "2026-05-22T08:00:00Z" },
+    ];
+    const out = enrichDailyActivityWithRecent(cached, recent, "2026-05-18");
+    expect(out.map((e) => e.date)).toEqual([
+      "2026-05-16",
+      "2026-05-17",
+      "2026-05-18",
+      "2026-05-19",
+      "2026-05-20",
+      "2026-05-22",
+    ]);
+    const m = new Map(out.map((e) => [e.date, e.sessionCount]));
+    expect(m.get("2026-05-19")).toBe(2);
+    expect(m.get("2026-05-20")).toBe(1);
+    expect(m.get("2026-05-22")).toBe(1);
+  });
+
+  it("ignores manifests on dates ≤ lastComputedDate (avoids double-count)", () => {
+    const recent = [
+      { started_at: "2026-05-18T23:00:00Z" }, // cache already counted this day
+      { started_at: "2026-05-17T08:00:00Z" },
+      { started_at: "2026-05-19T08:00:00Z" },
+    ];
+    const out = enrichDailyActivityWithRecent(cached, recent, "2026-05-18");
+    // The 2026-05-18 entry's sessionCount must remain the cache's 3.
+    expect(out.find((e) => e.date === "2026-05-18")?.sessionCount).toBe(3);
+    expect(out.find((e) => e.date === "2026-05-19")?.sessionCount).toBe(1);
+    expect(out.find((e) => e.date === "2026-05-17")?.sessionCount).toBe(7);
+  });
+
+  it("returns a sorted, post-cache-augmented list usable by computeActiveStreak", () => {
+    const recent = [
+      { started_at: "2026-05-19T10:00:00Z" },
+      { started_at: "2026-05-20T10:00:00Z" },
+      { started_at: "2026-05-21T10:00:00Z" },
+      { started_at: "2026-05-22T10:00:00Z" },
+    ];
+    const enriched = enrichDailyActivityWithRecent(cached, recent, "2026-05-18");
+    // Pre-fix: streak walking back from 2026-05-22 with only cache data
+    // would break at 2026-05-21 → return 1. With enrichment we get the
+    // full 7-day run (16, 17, 18, 19, 20, 21, 22).
+    expect(computeActiveStreak("2026-05-22", enriched, true)).toBe(7);
+  });
+
+  it("ignores manifests with unparseable started_at", () => {
+    const recent = [
+      { started_at: "not-a-date" },
+      { started_at: "2026-05-19T10:00:00Z" },
+    ];
+    const out = enrichDailyActivityWithRecent(cached, recent, "2026-05-18");
+    const m = new Map(out.map((e) => [e.date, e.sessionCount]));
+    expect(m.get("2026-05-19")).toBe(1);
+    // No garbage entry was added.
+    expect(out.every((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date))).toBe(true);
   });
 });
