@@ -18,12 +18,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
 
 ## Near-term (post-1.0 if necessary, but ideally before)
 
-- [ ] **Local-install dev workflow.** `npm run build` refreshes the
-  in-repo `dist/` but not `~/.claude/plugins/cache/llamabrain/
-  parallel-burn/<version>/dist/`. Iterating on the installed plugin
-  requires either a marketplace round-trip or a manual copy. Add a
-  `npm run install:local` (or similar) that builds and syncs the
-  cache copy in one step. Document the discipline.
 - [ ] **Cache-hit % rounding.** Now that the formula is fixed
   (`cacheRead / (input + cacheWrite + cacheRead)`), values at the
   high end can still display as `100.0%`. Show 3 significant

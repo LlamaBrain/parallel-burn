@@ -55,14 +55,14 @@ tagging — the dollar number is the headline metric the SPEC promises.
    aggregator:
 
    ```bash
-   # Today (live):
+   # Today (live, JSON):
    curl -s http://127.0.0.1:37337/api/today \
      | jq '.aggregate | {date, totalCostUsd, unknownModelSessionCount, sessions: (.sessions | length)}'
 
-   # Historical day (run via node CLI):
-   node ~/.claude/plugins/cache/llamabrain/parallel-burn/<latest>/dist/cli/parallel-burn.js \
-     day 2026-05-19 \
-     | jq '{date, totalCostUsd, unknownModelSessionCount, sessions: (.sessions | length)}'
+   # Historical day (CLI; positional arg is YYYY-MM-DD).
+   # Prints a human-readable report whose headline line ends in
+   # "$<TOTAL> list-price across N sessions" — that's the number to record.
+   node ~/.claude/plugins/cache/llamabrain/parallel-burn/<latest>/dist/cli/parallel-burn.js 2026-05-19
    ```
 
    Record:

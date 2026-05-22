@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.13] — 2026-05-22
+
+**`npm run install:local` + cost-reconciliation runbook fix.** Two
+small operator-DX items that bunch together because they ship at
+the same time and the reconciliation doc only becomes useful once
+the install path is repeatable.
+
+### Added
+
+- **`scripts/install-local.mjs`** + `npm run install:local` —
+  builds and copies the same payload that prior commits had been
+  syncing manually (`dist/`, `commands/`, `ADRs/`,
+  `.claude-plugin/`, `hooks/`, `verification/`, `pricing.json`,
+  `package.json`, `README.md`, `LICENSE`, `CHANGELOG.md`,
+  `SPEC.md`) into
+  `~/.claude/plugins/cache/llamabrain/parallel-burn/<version>/`.
+  Destination version is derived from `package.json` so the cache
+  directory always matches the current rc. Cross-platform via
+  `fs.cpSync`.
+
+### Fixed
+
+- `verification/cost-reconciliation.md` had `node ... day
+  2026-05-19` for the historical-day CLI invocation — there is no
+  `day` subcommand. The CLI takes the date as a bare positional
+  arg. Corrected, and the doc now explicitly points at the
+  headline line of the report (`"$X list-price across N sessions"`)
+  as the number to record.
+
 ## [1.0.0-rc.12] — 2026-05-22
 
 **Subagent double-count audit complete — no code change required.**

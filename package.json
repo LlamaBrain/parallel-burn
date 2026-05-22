@@ -1,6 +1,6 @@
 {
   "name": "@llamabrain/parallel-burn",
-  "version": "1.0.0-rc.12",
+  "version": "1.0.0-rc.13",
   "description": "Claude Code plugin that surfaces parallelism, cache discipline, and retail-price cost from your live sessions.",
   "license": "Apache-2.0",
   "author": "Michael Tiller <metagrue@gmail.com> (LlamaBrain Labs LLC)",
@@ -37,6 +37,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "install:local": "npm run build && node scripts/install-local.mjs",
     "clean": "node -e \"import('node:fs').then(fs => fs.rmSync('dist', { recursive: true, force: true }))\""
   },
   "bin": {
