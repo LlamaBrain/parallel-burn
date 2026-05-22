@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.14] — 2026-05-22
+
+**`GET /api/day?date=YYYY-MM-DD` for browser-driven reconciliation.**
+The reconciliation procedure (rc.11) assumed terminal access to
+invoke the CLI for historical days. Operators with browser-only
+access (no shell) were blocked — they could see today via
+`/api/today` but couldn't sample the older days the procedure
+requires. rc.14 closes that gap by computing the day's aggregate
+on demand and returning the same shape as `/api/today`.
+
+### Added
+
+- **`GET /api/day?date=YYYY-MM-DD`** — re-aggregates the named day
+  fresh (not cached). Returns
+  `{ date, aggregate, pricingAsOf, pricingStale, computedAt }`.
+  Reads each session's transcript so this is not a fast endpoint —
+  expect 100–500 ms on a busy day, longer for days with many
+  manifests. 400 on missing/malformed `?date=`, 500 on aggregator
+  exceptions.
+- Three server tests cover the happy path, missing-param, and
+  malformed-date. The empty-day case (`2020-01-01`) confirms the
+  pricing-fixture echoes through correctly.
+
+### Changed
+
+- `verification/cost-reconciliation.md` now leads with the
+  browser-friendly URL form for both today and historical days.
+  CLI invocation is retained as a fallback for terminal users.
+
 ## [1.0.0-rc.13] — 2026-05-22
 
 **`npm run install:local` + cost-reconciliation runbook fix.** Two

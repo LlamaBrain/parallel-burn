@@ -160,6 +160,43 @@ describe("server HTTP endpoints", () => {
     });
   });
 
+  it("rejects /api/day without a date query parameter", async () => {
+    await withServer(async (handle) => {
+      const res = await fetch(`${urlOf(handle)}/api/day`);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error?: string };
+      expect(body.error).toMatch(/date/i);
+    });
+  });
+
+  it("rejects /api/day with a malformed date", async () => {
+    await withServer(async (handle) => {
+      const res = await fetch(`${urlOf(handle)}/api/day?date=not-a-date`);
+      expect(res.status).toBe(400);
+    });
+  });
+
+  it("returns a well-formed aggregate for /api/day?date=YYYY-MM-DD", async () => {
+    await withServer(async (handle) => {
+      const res = await fetch(`${urlOf(handle)}/api/day?date=2020-01-01`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      const body = (await res.json()) as {
+        date: string;
+        aggregate: { date: string; sessions: unknown[]; totalCostUsd: number };
+        pricingAsOf: string;
+        pricingStale: boolean;
+        computedAt: string;
+      };
+      expect(body.date).toBe("2020-01-01");
+      expect(body.aggregate.date).toBe("2020-01-01");
+      expect(body.aggregate.sessions).toEqual([]);
+      expect(body.aggregate.totalCostUsd).toBe(0);
+      expect(body.pricingAsOf).toBe("2026-05-19");
+      expect(typeof body.computedAt).toBe("string");
+    });
+  });
+
   it("binds to 127.0.0.1 only (security: not 0.0.0.0)", async () => {
     await withServer((handle) => {
       const addr = handle.server.address();

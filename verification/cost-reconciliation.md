@@ -54,14 +54,18 @@ tagging — the dollar number is the headline metric the SPEC promises.
    *today*'s aggregate; for historical days, use the offline
    aggregator:
 
-   ```bash
-   # Today (live, JSON):
-   curl -s http://127.0.0.1:37337/api/today \
-     | jq '.aggregate | {date, totalCostUsd, unknownModelSessionCount, sessions: (.sessions | length)}'
+   ```
+   # Today (no terminal needed — open in a browser):
+   http://127.0.0.1:37337/api/today
 
-   # Historical day (CLI; positional arg is YYYY-MM-DD).
-   # Prints a human-readable report whose headline line ends in
-   # "$<TOTAL> list-price across N sessions" — that's the number to record.
+   # Historical day (rc.14+, also browser-friendly):
+   http://127.0.0.1:37337/api/day?date=2026-05-19
+   ```
+
+   Look for `aggregate.totalCostUsd` in the response. If you have a
+   terminal, the same data is available via the CLI:
+
+   ```bash
    node ~/.claude/plugins/cache/llamabrain/parallel-burn/<latest>/dist/cli/parallel-burn.js 2026-05-19
    ```
 

@@ -6,6 +6,9 @@
 //   GET /          → 302 → /overlay
 //   GET /overlay   → text/html, the OBS browser-source page
 //   GET /api/today → application/json, today's DailyAggregate
+//   GET /api/day?date=YYYY-MM-DD → application/json, the named day's
+//     DailyAggregate. Used by the cost-reconciliation procedure when the
+//     operator has URL access but no terminal access.
 //   GET /events    → text/event-stream, push-on-change feed
 //
 // Binds to 127.0.0.1 only. No auth — the threat model is single-user
@@ -312,12 +315,63 @@ async function handleRequest(
     res.end(cached);
     return;
   }
+  if (url.startsWith("/api/day")) {
+    await handleDayRequest(req, res, ctx);
+    return;
+  }
   if (url === "/events") {
     handleSse(req, res, ctx);
     return;
   }
   res.writeHead(HTTP_NOT_FOUND, { "Content-Type": "text/plain" });
   res.end("not found");
+}
+
+const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * One-off aggregate for a historical day. Computed fresh, not from the
+ * cache; the cache only holds today. The cost path reads each session's
+ * transcript so this is not a fast endpoint — expect 100–500 ms on a
+ * busy day. Used by the cost-reconciliation procedure when the operator
+ * has URL access but no terminal access.
+ */
+async function handleDayRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RequestContext,
+): Promise<void> {
+  const u = new URL(req.url ?? "/", `http://${req.headers.host ?? "127.0.0.1"}`);
+  const date = u.searchParams.get("date");
+  if (date === null || !DAY_PATTERN.test(date)) {
+    res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ error: "missing or malformed ?date=YYYY-MM-DD" }));
+    return;
+  }
+  try {
+    const pricing = await PricingProvider.fromFile(ctx.config.pricingFile);
+    const aggregatorOptions = ctx.config.sessionsDir !== undefined
+      ? { sessionsDir: ctx.config.sessionsDir }
+      : {};
+    const aggregate = await aggregateDay(date, pricing, aggregatorOptions);
+    res.writeHead(HTTP_OK, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(JSON.stringify({
+      date,
+      aggregate,
+      pricingAsOf: pricing.asOf,
+      pricingStale: pricing.isStale(),
+      computedAt: new Date().toISOString(),
+    }));
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({
+      error: "aggregation failed",
+      detail: err instanceof Error ? err.message : String(err),
+    }));
+  }
 }
 
 function handleSse(req: IncomingMessage, res: ServerResponse, ctx: RequestContext): void {
