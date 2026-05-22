@@ -1,6 +1,6 @@
 # Roadmap
 
-Tracks work between the current release candidate (`v1.0.0-rc.12`)
+Tracks work between the current release candidate (`v1.0.0-rc.15`)
 and a stable `v1.0.0` cut.
 
 ## 1.0 stable release blockers
@@ -15,9 +15,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
   Three rows of the results table must be filled in within 1 %
   tolerance before tagging stable. Operator action required —
   needs Anthropic-console access.
-
-## Near-term (post-1.0 if necessary, but ideally before)
-
 
 ## Backlog
 
