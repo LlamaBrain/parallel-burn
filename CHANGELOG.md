@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.12] — 2026-05-22
+
+**Subagent double-count audit complete — no code change required.**
+Adds `verification/subagent-audit.md` analyzing whether the 12
+`agent-*` sessions reported `$0.00` on 2026-05-19 represented (a)
+correct attribution or (b) silently lost cost. The answer is (a):
+Claude Code no longer emits separate `agent-*.jsonl` transcripts;
+parent-transcript usage fields bill the subagent loop directly;
+historical agent manifests with missing transcripts contribute $0,
+which is arithmetically incapable of double-counting. The audit
+also documents the future-proofing signals (the reconciliation
+procedure + `unknownModelSessionCount`) that would detect a
+regression if Anthropic changes the attribution model.
+
 ## [1.0.0-rc.11] — 2026-05-22
 
 **Cost-reconciliation procedure documented.** Adds

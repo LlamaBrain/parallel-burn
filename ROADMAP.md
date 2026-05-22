@@ -15,12 +15,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
   Three rows of the results table must be filled in within 1 %
   tolerance before tagging stable. Operator action required —
   needs Anthropic-console access.
-- [ ] **Subagent double-count audit.** Today 12 `agent-*` sessions
-  contribute `$0.00`. This could be correct (parent transcript
-  already counts subagent tokens, so the subagent manifest is a
-  no-op) or it could mean the calculator silently can't read
-  subagent transcripts and we're losing real cost. Confirm which
-  via a known-good session pair.
 
 ### Plugin hook discovery
 
