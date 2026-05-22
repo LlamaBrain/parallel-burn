@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.8] — 2026-05-22
+
+**Date-suffixed model IDs now resolve to family rates.** Anthropic's
+transcripts emit fully-qualified IDs like `claude-haiku-4-5-20251001`,
+while `pricing.json` keys the family root `claude-haiku-4-5`. Before
+rc.8 every dated ID missed the lookup and silently fell through to
+the conservative-fallback rate (the most-expensive model in the rate
+card). On 2026-05-19, 47 of 70 observer sessions were billed at the
+fallback instead of the real Haiku rate, materially inflating the
+displayed daily total.
+
+### Added
+
+- **`normalizeModelId(model)`** — strips a trailing `-YYYYMMDD`
+  9-character suffix (dash + 8 digits). Exported so other modules
+  (transcript readers, logging) can reuse the same canonical form.
+- Six tests covering the normalization: dated lookup succeeds,
+  exact match wins over normalized form, brand-new model IDs still
+  fail closed, non-8-digit trailing tokens and trailing words like
+  `-preview` are *not* stripped, and the empty string is safe.
+
+### Changed
+
+- **`PricingProvider.get` / `has`** retry with the normalized form
+  after an exact-key miss. Brand-new model IDs whose family root
+  isn't in the rate card still return `undefined` and fall through
+  to the conservative fallback in `computeCost`, which is the
+  fail-closed contract called out in CLAUDE.md.
+
 ## [1.0.0-rc.7] — 2026-05-22
 
 **Streak no longer truncates when `~/.claude/stats-cache.json` is

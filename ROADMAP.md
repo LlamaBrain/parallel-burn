@@ -10,16 +10,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
 
 ### Cost accuracy (the user-facing dollar number must be trustworthy)
 
-- [ ] **Pricing model-ID lookup is broken for date-suffixed IDs.**
-  pricing.json keys models as `claude-haiku-4-5` but Anthropic's API
-  emits `claude-haiku-4-5-20251001` in transcripts. Lookup misses,
-  and the session is silently billed at the unknown-model fallback.
-  Today's `observer-sessions` total of `$579.62` is computed against
-  the fallback for **47 of 70 sessions**, not the actual rate. Fix:
-  either normalize the lookup (strip trailing `-YYYYMMDD` before
-  checking) or include all date variants explicitly in pricing.json.
-  Pick the option that fails closed when a brand-new model ID is
-  emitted that we don't yet know about.
 - [ ] **Missing model coverage in pricing.json.** `claude-sonnet-4-5`
   family is entirely absent — only `claude-sonnet-4-6` is keyed.
   41 of today's sessions ran on Sonnet 4.5. Add the missing entries.

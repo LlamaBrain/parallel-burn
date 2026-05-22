@@ -307,3 +307,63 @@ describe("validatePricingDocument (direct)", () => {
     ).toThrow(/cache_read_per_mtok/);
   });
 });
+
+describe("PricingProvider date-suffix normalization", () => {
+  it("returns family rates for date-suffixed model IDs (claude-haiku-4-5-20251001)", () => {
+    const p = PricingProvider.fromDocument(VALID_DOC);
+    const rates = p.get("claude-haiku-4-5-20251001");
+    expect(rates).toBeDefined();
+    expect(rates?.input_per_mtok).toBe(1.0);
+    expect(rates?.output_per_mtok).toBe(5.0);
+    expect(p.has("claude-haiku-4-5-20251001")).toBe(true);
+  });
+
+  it("returns family rates for opus-4-7 date-suffixed IDs", () => {
+    const p = PricingProvider.fromDocument(VALID_DOC);
+    const rates = p.get("claude-opus-4-7-20251022");
+    expect(rates).toBeDefined();
+    expect(rates?.input_per_mtok).toBe(15.0);
+  });
+
+  it("prefers an exact match over the normalized form", () => {
+    const docWithSuffixedKey: PricingDocument = {
+      ...VALID_DOC,
+      models: {
+        ...VALID_DOC.models,
+        "claude-haiku-4-5-20251001": {
+          input_per_mtok: 99.0,
+          output_per_mtok: 99.0,
+          cache_write_5m_per_mtok: 99.0,
+          cache_write_1h_per_mtok: 99.0,
+          cache_read_per_mtok: 99.0,
+        },
+      },
+    };
+    const p = PricingProvider.fromDocument(docWithSuffixedKey);
+    expect(p.get("claude-haiku-4-5-20251001")?.input_per_mtok).toBe(99.0);
+    expect(p.get("claude-haiku-4-5")?.input_per_mtok).toBe(1.0);
+  });
+
+  it("fails closed for brand-new model IDs whose base family is also unknown", () => {
+    const p = PricingProvider.fromDocument(VALID_DOC);
+    expect(p.get("claude-foo-9-9-20270101")).toBeUndefined();
+    expect(p.has("claude-foo-9-9-20270101")).toBe(false);
+    expect(p.get("claude-foo-9-9")).toBeUndefined();
+  });
+
+  it("does not strip non-8-digit trailing tokens", () => {
+    const p = PricingProvider.fromDocument(VALID_DOC);
+    // 7 digits — not a date suffix, must not be stripped.
+    expect(p.get("claude-haiku-4-5-1234567")).toBeUndefined();
+    // 9 digits — also not.
+    expect(p.get("claude-haiku-4-5-123456789")).toBeUndefined();
+    // A trailing non-numeric word — preview, beta, etc.
+    expect(p.get("claude-haiku-4-5-preview")).toBeUndefined();
+  });
+
+  it("returns undefined for the empty string without throwing", () => {
+    const p = PricingProvider.fromDocument(VALID_DOC);
+    expect(p.get("")).toBeUndefined();
+    expect(p.has("")).toBe(false);
+  });
+});

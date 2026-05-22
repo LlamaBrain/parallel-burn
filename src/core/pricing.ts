@@ -85,12 +85,31 @@ export class PricingProvider {
     }
   }
 
+  /**
+   * Look up rates for `model`. Tries the exact key first; if that misses,
+   * strips a trailing `-YYYYMMDD` date suffix and retries. Anthropic's
+   * transcripts emit fully-qualified IDs like `claude-haiku-4-5-20251001`
+   * while pricing.json keys the family root (`claude-haiku-4-5`); this
+   * normalization closes that gap.
+   *
+   * Fails closed for genuinely-unknown models: if the stripped base isn't
+   * in the rate card either, returns `undefined`. The caller (computeCost)
+   * then applies the conservative-fallback rate and flags
+   * `unknownModel: true`.
+   */
   get(model: string): ModelPricing | undefined {
-    return this.doc.models[model];
+    const exact = this.doc.models[model];
+    if (exact !== undefined) return exact;
+    const normalized = normalizeModelId(model);
+    if (normalized === model) return undefined;
+    return this.doc.models[normalized];
   }
 
   has(model: string): boolean {
-    return Object.prototype.hasOwnProperty.call(this.doc.models, model);
+    if (Object.prototype.hasOwnProperty.call(this.doc.models, model)) return true;
+    const normalized = normalizeModelId(model);
+    if (normalized === model) return false;
+    return Object.prototype.hasOwnProperty.call(this.doc.models, normalized);
   }
 
   get asOf(): string {
@@ -127,6 +146,24 @@ export class PricingProvider {
     const ageMs = now.getTime() - asOfMs;
     return Math.floor(ageMs / MS_PER_DAY);
   }
+}
+
+/**
+ * Trailing `-YYYYMMDD` date suffix: 9 chars total (`-` + 8 digits) at the
+ * end of the string. We strip only this exact shape, never 7- or 9-digit
+ * variants or trailing words like `-preview`/`-beta` — those should miss
+ * the rate card and fall through to the conservative-fallback.
+ */
+const DATE_SUFFIX_PATTERN = /-\d{8}$/;
+
+/**
+ * Strip the trailing `-YYYYMMDD` from a fully-qualified Anthropic model ID
+ * to recover the family root used as a pricing.json key. Anthropic's
+ * transcripts emit `claude-haiku-4-5-20251001`; pricing.json keys the
+ * family root `claude-haiku-4-5`.
+ */
+export function normalizeModelId(model: string): string {
+  return model.replace(DATE_SUFFIX_PATTERN, "");
 }
 
 function isPlainObject(x: unknown): x is Record<string, unknown> {
