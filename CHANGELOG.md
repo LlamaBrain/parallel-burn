@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.17] — 2026-05-22
+
+**Reconciliation procedure gains a subscription-user path and
+records its first pass.** Path A (console comparison) is now
+documented as the API-billing operator's procedure. Path B
+(published-rate-card verification + hand-computed spot check) is
+the new subscription-user procedure — both subscription operators
+and pay-as-you-go operators can verify cost accuracy with paths
+appropriate to their billing model.
+
+Path B passed on rc.16. The results log records:
+
+- **Step 1 — Rate card verification.** All ten model entries in
+  `pricing.json` match the published table at
+  `https://platform.claude.com/docs/en/about-claude/pricing` for
+  every field. (rc.15 didn't — that's how the Opus tier bug was
+  found.)
+- **Step 2 — Hand-computed spot check.** A small Sonnet 4.5
+  session was costed by hand from its token counts and rates;
+  parallel-burn's reported `costUsd` matched to the sixth
+  decimal (`$0.028034` vs hand-compute `$0.028034`).
+
+The 1.0 reconciliation blocker is **closed on rc.17** with the
+rc.16 rate fix locked in.
+
 ## [1.0.0-rc.16] — 2026-05-22
 
 **Opus tier pricing was 3× too high since v0.0.3. Corrected.**

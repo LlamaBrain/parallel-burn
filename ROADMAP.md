@@ -10,11 +10,14 @@ These must be resolved before the stable tag — see CHANGELOG.md
 
 ### Cost accuracy (the user-facing dollar number must be trustworthy)
 
-- [ ] **Manual reconciliation against Anthropic console.** Procedure
-  is documented at `verification/cost-reconciliation.md` (rc.11).
-  Three rows of the results table must be filled in within 1 %
-  tolerance before tagging stable. Operator action required —
-  needs Anthropic-console access.
+- [x] **Cost reconciliation against Anthropic.** Two-path procedure
+  documented at `verification/cost-reconciliation.md`. Path A
+  (console comparison) for API-billing operators; Path B
+  (rate-card verification + hand-computed spot check) for
+  subscription operators. **Path B passed on rc.16** — rc.15 had
+  Opus 4.5/4.6/4.7 at 3× the real rate; rc.16 corrected it;
+  hand-compute on a Sonnet 4.5 session matched to the sixth
+  decimal.
 
 ## Backlog
 
