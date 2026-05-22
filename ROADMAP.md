@@ -10,12 +10,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
 
 ### Cost accuracy (the user-facing dollar number must be trustworthy)
 
-- [ ] **Audit the unknown-model fallback.** CLAUDE.md says "log a
-  warning and use a conservative fallback" but the actual fallback
-  rate and direction (errs high vs. low) is not documented or
-  asserted. Either codify the fallback as a named constant with
-  rationale, or surface unknown-model sessions as
-  `uncosted N sessions` and exclude them from `totalCostUsd`.
 - [ ] **Manual reconciliation against Anthropic console.** Pull at
   least three distinct days' real console totals, compare to
   ParallelBurn's `totalCostUsd` for the same operator. Tolerance:

@@ -6,15 +6,39 @@
 // 0.1× input for cache reads) — this module reads them directly and never
 // multiplies by 1.25 in code. Single source of truth: the rate card.
 //
-// Unknown-model policy (per CLAUDE.md "If a pricing rate is unclear, log a
-// warning and use a conservative fallback. Do not silently zero-cost an
-// unknown model."): we bill against the most-expensive known model's rates
-// and flag `unknownModel: true` so callers can render a warning. The
-// fallback is conservative in the upper-bound sense: it overestimates
-// rather than underestimates the unknown.
+// Unknown-model policy: see CONSERVATIVE_FALLBACK_POLICY below.
 
 import type { MessageEvent } from "./event.js";
 import type { ModelPricing, PricingProvider } from "./pricing.js";
+
+/**
+ * Unknown-model fallback policy. Codifies CLAUDE.md's "If a pricing rate
+ * is unclear, log a warning and use a conservative fallback. Do not
+ * silently zero-cost an unknown model."
+ *
+ * **Direction.** The fallback overestimates rather than underestimates.
+ * Among all models in the rate card, we pick the one with the highest
+ * `output_per_mtok` — output tokens dominate the cost of a typical Claude
+ * session, so picking the highest output rate guarantees an upper bound
+ * on the unknown model's true cost. (Input/cache rates are dragged along
+ * from the same model; they're not selected independently.)
+ *
+ * **Why upper-bound and not lower-bound.** A user who sees an inflated
+ * dollar number on the overlay loses trust gradually as they reconcile
+ * against their Anthropic console. A user who sees an under-counted total
+ * thinks they have more budget than they do and spends accordingly. The
+ * second failure mode is more harmful.
+ *
+ * **Why not zero.** Zero-costing an unknown model would silently hide
+ * spend; the operator might never notice that an entire model family is
+ * uncosted. The flag `unknownModel: true` on the CostBreakdown lets
+ * higher layers surface a count to the user (see
+ * `DailyAggregate.unknownModelSessionCount`).
+ */
+export const CONSERVATIVE_FALLBACK_POLICY = {
+  selector: "max-output-per-mtok",
+  direction: "overestimates",
+} as const;
 
 const TOKENS_PER_MTOK = 1_000_000;
 

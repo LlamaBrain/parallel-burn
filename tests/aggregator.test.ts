@@ -303,6 +303,16 @@ describe("rollUpDay", () => {
     const day = rollUpDay("2024-01-15", sessions, Date.parse("2026-05-19T18:00:00Z"));
     expect(day.sessionContextMs).toBe(60 * 60 * 1000);
   });
+
+  it("counts sessions costed at the conservative fallback", () => {
+    const known = sess({ id: "k", project: "p", startedAt: "2026-05-19T10:00:00Z", endedAt: "2026-05-19T10:30:00Z", cost: 5 });
+    const unknownA = { ...sess({ id: "u1", project: "p", startedAt: "2026-05-19T11:00:00Z", endedAt: "2026-05-19T11:15:00Z", cost: 3 }), unknownModel: true };
+    const unknownB = { ...sess({ id: "u2", project: "p", startedAt: "2026-05-19T12:00:00Z", endedAt: "2026-05-19T12:10:00Z", cost: 2 }), unknownModel: true };
+    const day = rollUpDay("2026-05-19", [known, unknownA, unknownB]);
+    expect(day.unknownModelSessionCount).toBe(2);
+    // Fallback-priced cost still rolls into totalCostUsd (upper bound).
+    expect(day.totalCostUsd).toBe(10);
+  });
 });
 
 describe("aggregator integration (manifest dir on disk)", () => {

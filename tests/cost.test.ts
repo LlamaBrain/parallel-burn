@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeCost, EmptyPricingError } from "../src/core/cost.js";
+import { CONSERVATIVE_FALLBACK_POLICY, computeCost, EmptyPricingError } from "../src/core/cost.js";
 import type { MessageEvent, MessageEventUsage } from "../src/core/event.js";
 import { MESSAGE_EVENT_SCHEMA_VERSION } from "../src/core/event.js";
 import {
@@ -198,6 +198,43 @@ describe("computeCost — unknown model", () => {
     expect(c.conservativeFallbackModel).toBe("claude-opus-4-7");
     expect(c.input).toBeCloseTo(1.5, 10); // 100k × $15 / 1M
     expect(c.model).toBe("claude-future-model");
+  });
+
+  it("CONSERVATIVE_FALLBACK_POLICY documents max-output selector + overestimate direction", () => {
+    // This test exists to keep the constant and its rationale in lockstep:
+    // if the implementation drifts (e.g. someone changes pickConservativeFallback
+    // to use a different selector), the constant must move with it.
+    expect(CONSERVATIVE_FALLBACK_POLICY.selector).toBe("max-output-per-mtok");
+    expect(CONSERVATIVE_FALLBACK_POLICY.direction).toBe("overestimates");
+  });
+
+  it("conservative fallback is always the model with the highest output_per_mtok", () => {
+    // Build a rate card where the max-output model is NOT the alphabetically
+    // first key. Implementation must scan and pick by output rate, not
+    // iteration order.
+    const doc: PricingDocument = {
+      schema_version: "1.0",
+      as_of: "2026-05-01",
+      source: "test",
+      currency: "USD",
+      models: {
+        "zzz-cheap": {
+          input_per_mtok: 0.1, output_per_mtok: 0.5,
+          cache_write_5m_per_mtok: 0.1, cache_write_1h_per_mtok: 0.2, cache_read_per_mtok: 0.01,
+        },
+        "aaa-expensive": {
+          input_per_mtok: 99, output_per_mtok: 999,
+          cache_write_5m_per_mtok: 123, cache_write_1h_per_mtok: 200, cache_read_per_mtok: 10,
+        },
+        "mmm-mid": {
+          input_per_mtok: 5, output_per_mtok: 25,
+          cache_write_5m_per_mtok: 6, cache_write_1h_per_mtok: 10, cache_read_per_mtok: 0.5,
+        },
+      },
+    };
+    const c = computeCost(event("brand-new-model", { input_tokens: 1_000 }), PricingProvider.fromDocument(doc));
+    expect(c.unknownModel).toBe(true);
+    expect(c.conservativeFallbackModel).toBe("aaa-expensive");
   });
 
   it("throws EmptyPricingError when the PricingProvider exposes no models", () => {

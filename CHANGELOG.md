@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.10] — 2026-05-22
+
+**Unknown-model fallback policy is now named, asserted, and
+surfaced.** CLAUDE.md said "log a warning and use a conservative
+fallback" but the implementation's actual policy (overestimate via
+max-output-per-mtok) was buried in a comment and not under test —
+and downstream consumers had no way to see how many of today's
+sessions were fallback-priced.
+
+### Added
+
+- **`CONSERVATIVE_FALLBACK_POLICY`** exported from `cost.ts` —
+  documents the selector (`max-output-per-mtok`) and direction
+  (`overestimates`) with multi-paragraph rationale. Locking the
+  policy into a named, testable surface makes future drift visible.
+- **`DailyAggregate.unknownModelSessionCount`** — running count of
+  sessions on the day whose model was costed via fallback. Their
+  cost is still rolled into `totalCostUsd` (the fallback is an
+  upper bound on truth), but a high count signals slack in the
+  total — actionable signal that the rate card needs extending.
+- Two tests pin the constant to the implementation, plus a third
+  verifies the selector picks the max-output model regardless of
+  iteration order.
+
 ## [1.0.0-rc.9] — 2026-05-22
 
 **Sonnet 4.5 and Opus 4.5 added to pricing.json.** Survey of today's

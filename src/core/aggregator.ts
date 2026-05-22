@@ -81,6 +81,15 @@ export type DailyAggregate = {
    * cache-priming turns of any long session and lose all signal.
    */
   readonly cacheHitPercent: number;
+  /**
+   * Number of sessions on this day whose model wasn't found in pricing.json
+   * and was costed using the conservative-fallback policy (see
+   * CONSERVATIVE_FALLBACK_POLICY in cost.ts). Their cost is still rolled
+   * into `totalCostUsd` — the fallback is an upper bound — but a high
+   * count means the displayed total has slack relative to the true number
+   * and the operator should consider extending the rate card.
+   */
+  readonly unknownModelSessionCount: number;
 };
 
 export type AggregatorOptions = {
@@ -292,6 +301,7 @@ export function rollUpDay(
   let totalOutput = 0;
   let totalCacheRead = 0;
   let totalCacheWrite = 0;
+  let unknownModelSessionCount = 0;
   const byProjectMap = new Map<ProjectId, { durationMs: number; costUsd: number; sessionCount: number }>();
   for (const s of sessions) {
     totalCost += s.costUsd;
@@ -299,6 +309,7 @@ export function rollUpDay(
     totalOutput += s.outputTokens;
     totalCacheRead += s.cacheReadTokens;
     totalCacheWrite += s.cacheWriteTokens;
+    if (s.unknownModel) unknownModelSessionCount += 1;
     const existing = byProjectMap.get(s.project) ?? { durationMs: 0, costUsd: 0, sessionCount: 0 };
     existing.durationMs += s.durationMs;
     existing.costUsd += s.costUsd;
@@ -328,6 +339,7 @@ export function rollUpDay(
     cacheWriteTokens: totalCacheWrite,
     cacheDisciplineRatio,
     cacheHitPercent,
+    unknownModelSessionCount,
   };
 }
 
