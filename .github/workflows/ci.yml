@@ -1,0 +1,29 @@
+name: ci
+
+# PR gate: build, typecheck, lint, test. Runs on push to main and on
+# every pull request. The point is to make the rc.16-class of bug —
+# anything detectable by the existing checks — visibly impossible to
+# merge.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
