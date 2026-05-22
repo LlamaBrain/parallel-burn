@@ -14,13 +14,12 @@ Phase 4 (aggregator + compression + streak) — **complete** at `v0.2.0`.
 Phase 5 (slash commands + statusline) — **complete** at `v0.3.0`.
 Phase 6 (end-of-session markdown summary) — **complete** at `v0.4.0`.
 Phase 7 (localhost server + OBS overlay) — **complete** at `v0.5.0`.
-Phase 8 (distribution prep) — **release candidate** at `v1.0.0-rc.1`.
+Phase 8 (distribution prep) — **stable** at `v1.0.0` (2026-05-22).
 
-All SPEC.md §10 phases are coded and automated checks are green.
-**Stable `v1.0.0` is gated on human verification** of the live
-integration surfaces — see the "Awaiting human verification" section
-in CHANGELOG.md for the checklist. Do not auto-tag a stable 1.0; the
-human owns that cut.
+All SPEC.md §10 phases are coded, automated checks are green, and
+the reconciliation procedure has passed via Path B (subscription
+operator path). 1.1.0 picks up the regression-resistance items —
+see `ROADMAP.md`.
 
 ### Begin Phase 2 by
 

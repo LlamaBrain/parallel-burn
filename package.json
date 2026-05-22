@@ -1,6 +1,6 @@
 {
   "name": "@llamabrain/parallel-burn",
-  "version": "1.0.0-rc.17",
+  "version": "1.0.0",
   "description": "Claude Code plugin that surfaces parallelism, cache discipline, and retail-price cost from your live sessions.",
   "license": "Apache-2.0",
   "author": "Michael Tiller <metagrue@gmail.com> (LlamaBrain Labs LLC)",

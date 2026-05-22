@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-05-22
+
+**Stable release.** Promoted from `v1.0.0-rc.17` with no code
+changes — only the version string. The cumulative work that
+landed across rc.5 → rc.17 is captured under each rc's entry
+below; this entry is the cut, not new work.
+
+### What 1.0 delivers
+
+ParallelBurn surfaces parallelism, cache discipline, and retail-
+price cost from your live Claude Code sessions, with a localhost
+overlay suitable for OBS browser-source rendering.
+
+- **Hook layout** that fires reliably on Windows (rc.5 — split
+  metadata + hooks into `.claude-plugin/` and `hooks/`).
+- **Server autostart** from `SessionStart` with an idempotent
+  detached spawn (rc.6).
+- **Streak** that survives Claude Code's stale `stats-cache.json`
+  via manifest-derived enrichment (rc.7).
+- **Cost accuracy** end-to-end:
+  - Date-suffixed model IDs normalize to family rates (rc.8).
+  - Sonnet 4.5 + Opus 4.5 added (rc.9).
+  - `CONSERVATIVE_FALLBACK_POLICY` named + `unknownModelSession
+    Count` surfaced (rc.10).
+  - Subagent double-count audit closed (rc.12).
+  - **Opus tier rate correction — was 3× too high since v0.0.3**
+    (rc.16). Caught by the very procedure designed to catch it
+    (rc.11 / rc.17).
+- **`/api/day?date=YYYY-MM-DD`** for browser-driven reconciliation
+  (rc.14).
+- **`npm run install:local`** centralizing the per-RC sync
+  (rc.13).
+- **288 unit tests** + a Path B reconciliation that matched a
+  hand-computed Sonnet 4.5 session to the sixth decimal (rc.17).
+
+### What's deliberately *not* in 1.0
+
+See `ROADMAP.md`. 1.1.0 picks up the regression-resistance work
+the rc.16 episode argued for (pricing-staleness visibility,
+codified spot-check script, extended rate card). Per-session
+overlay breakdown, nightly CI history, and wrapper-script
+discipline are further-out backlog.
+
+### Subscription operators: what the dollar number means
+
+ParallelBurn shows *list-price retail cost* — what your work
+would cost at API rates. On a monthly subscription plan, you do
+not actually pay this number; it's a "value extracted from the
+subscription" signal. The `subsidyMultiplier` field on the
+DailyAggregate is the ratio of retail cost to your prorated
+monthly fee.
+
 ## [1.0.0-rc.17] — 2026-05-22
 
 **Reconciliation procedure gains a subscription-user path and
