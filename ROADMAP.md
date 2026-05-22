@@ -1,6 +1,6 @@
 # Roadmap
 
-Tracks work between the current release candidate (`v1.0.0-rc.4`)
+Tracks work between the current release candidate (`v1.0.0-rc.12`)
 and a stable `v1.0.0` cut.
 
 ## 1.0 stable release blockers
@@ -15,19 +15,6 @@ These must be resolved before the stable tag — see CHANGELOG.md
   Three rows of the results table must be filled in within 1 %
   tolerance before tagging stable. Operator action required —
   needs Anthropic-console access.
-
-### Plugin hook discovery
-
-- [ ] **Hooks declared in root `plugin.json` aren't picked up by the
-  Claude Code harness on Windows.** Fresh-session test on
-  2026-05-19 produced a transcript but no manifest — SessionStart
-  fired neither write nor summary. The reference working plugin
-  (`claude-mem`) splits metadata into `.claude-plugin/plugin.json`
-  and hooks into a separate `hooks/hooks.json` file at the plugin
-  root. Mirror that layout for ParallelBurn. Without this, the
-  real-time manifest pipeline never runs — only `parallel-burn
-  backfill` populates the data plane, which defeats the live
-  overlay and statusline guarantees the SPEC promises.
 
 ## Near-term (post-1.0 if necessary, but ideally before)
 
