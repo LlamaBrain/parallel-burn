@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.16] — 2026-05-22
+
+**Opus tier pricing was 3× too high since v0.0.3. Corrected.**
+This is exactly the class of bug the reconciliation procedure
+exists to catch — and the moment it did, on the first read of
+Anthropic's published rate card.
+
+### The bug
+
+`pricing.json` had `claude-opus-4-7`, `claude-opus-4-6`, and (added
+in rc.9) `claude-opus-4-5` keyed at `$15 input / $75 output` per
+MTok. Those are the **deprecated Opus 4.0/4.1 rates**. The current
+Opus 4.5+ rates are `$5 input / $25 output`, and have been since
+the 4.5 generation shipped. Every Opus session in every operator's
+history has been displayed at 3× its real cost since v0.0.3.
+
+Sonnet 4.x and Haiku 4.5 rates are correct and unchanged.
+
+### What changed
+
+`pricing.json` now matches Anthropic's published rate card at
+`https://platform.claude.com/docs/en/about-claude/pricing`:
+
+| Model | input | 5m write | 1h write | cache read | output |
+|---|---|---|---|---|---|
+| claude-opus-4-7  | $5 | $6.25 | $10 | $0.50 | $25 |
+| claude-opus-4-6  | $5 | $6.25 | $10 | $0.50 | $25 |
+| claude-opus-4-5  | $5 | $6.25 | $10 | $0.50 | $25 |
+| claude-opus-4-1  | $15 | $18.75 | $30 | $1.50 | $75 (legacy) |
+| claude-opus-4-0  | $15 | $18.75 | $30 | $1.50 | $75 (deprecated) |
+| claude-sonnet-4-6 | $3 | $3.75 | $6 | $0.30 | $15 |
+| claude-sonnet-4-5 | $3 | $3.75 | $6 | $0.30 | $15 |
+| claude-sonnet-4-0 | $3 | $3.75 | $6 | $0.30 | $15 (deprecated) |
+| claude-haiku-4-5  | $1 | $1.25 | $2 | $0.10 | $5 |
+| claude-haiku-3-5  | $0.80 | $1 | $1.60 | $0.08 | $4 (retired) |
+
+Legacy entries added because survey of older transcripts shows
+those model IDs in use. The rc.8 date-suffix normalization handles
+the dated variants (`-20250514`, `-20250805`, etc.) on top.
+
+### Operator impact
+
+- Every historical day's `totalCostUsd` drops to roughly **1/3 of
+  the previous display** for Opus-heavy work. Sonnet/Haiku days
+  unchanged.
+- The `subsidyMultiplier` (cost / subscription) gets correspondingly
+  smaller — apparent subscription savings were overstated.
+- `pricingAsOf` bumped to `2026-05-22` because the rates were
+  re-sourced from Anthropic.
+
+### How this got caught
+
+The subscription-user reconciliation path (rc.17) starts with
+"verify pricing.json against Anthropic's published rates." The
+first read of that page surfaced this. The 285 unit tests passed
+throughout — none of them check pricing.json values against an
+external source. Pinning the rate card to source is now an
+expectation on every operator running reconciliation.
+
+288 tests still passing (test fixtures use their own pricing docs,
+not live pricing.json).
+
 ## [1.0.0-rc.15] — 2026-05-22
 
 **Cache-hit % gains a second decimal near saturation.** Plain
