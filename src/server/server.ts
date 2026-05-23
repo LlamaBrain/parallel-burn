@@ -78,8 +78,12 @@ export type LiveSnapshot = {
 export async function buildSnapshot(config: ServerConfig): Promise<LiveSnapshot> {
   const pricing = await PricingProvider.fromFile(config.pricingFile);
   const today = dateOf(new Date().toISOString());
+  // When `sessionsDir` is overridden we're in test territory — also
+  // disable the aggregator's auto-backfill so the test doesn't scan
+  // the operator's real `~/.claude/projects/`. Production paths leave
+  // both unset and get the self-healing default (see ADR-0007).
   const aggregatorOptions = config.sessionsDir !== undefined
-    ? { sessionsDir: config.sessionsDir }
+    ? { sessionsDir: config.sessionsDir, autoBackfill: false }
     : {};
   const aggregate = await aggregateDay(today, pricing, aggregatorOptions);
   const streakSnapshot = await computeStreakFromClaudeStats(today, aggregate, aggregatorOptions);
@@ -144,8 +148,12 @@ async function buildTodaySnapshot(
 ): Promise<LiveSnapshot> {
   const pricing = await PricingProvider.fromFile(config.pricingFile);
   const today = dateOf(new Date().toISOString());
+  // When `sessionsDir` is overridden we're in test territory — also
+  // disable the aggregator's auto-backfill so the test doesn't scan
+  // the operator's real `~/.claude/projects/`. Production paths leave
+  // both unset and get the self-healing default (see ADR-0007).
   const aggregatorOptions = config.sessionsDir !== undefined
-    ? { sessionsDir: config.sessionsDir }
+    ? { sessionsDir: config.sessionsDir, autoBackfill: false }
     : {};
   const aggregate = await aggregateDay(today, pricing, aggregatorOptions);
   // Re-stamp the streak's "today active" flag from this poll's data —
@@ -183,7 +191,7 @@ export async function startServer(config: ServerConfig): Promise<ServerHandle> {
     try {
       const today = dateOf(new Date().toISOString());
       const aggregatorOptions = config.sessionsDir !== undefined
-        ? { sessionsDir: config.sessionsDir }
+        ? { sessionsDir: config.sessionsDir, autoBackfill: false }
         : {};
       const pricing = await PricingProvider.fromFile(config.pricingFile);
       const aggregate = await aggregateDay(today, pricing, aggregatorOptions);
@@ -351,7 +359,7 @@ async function handleDayRequest(
   try {
     const pricing = await PricingProvider.fromFile(ctx.config.pricingFile);
     const aggregatorOptions = ctx.config.sessionsDir !== undefined
-      ? { sessionsDir: ctx.config.sessionsDir }
+      ? { sessionsDir: ctx.config.sessionsDir, autoBackfill: false }
       : {};
     const aggregate = await aggregateDay(date, pricing, aggregatorOptions);
     res.writeHead(HTTP_OK, {

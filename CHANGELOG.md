@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-05-23
+
+### Fixed
+
+- **Headline parallelism multiplier was silently undercounting on days
+  with sessions that didn't load the plugin.** `aggregateDay` listed
+  manifests under `~/.parallel-burn/data/sessions/` and folded only
+  those into the daily aggregate. Background/headless Claude Code
+  sessions where the `SessionStart` hook never fires (e.g. the
+  `claude-mem-observer-sessions` project on the author's machine —
+  80 sessions, ~7h 44m of session-context) had no manifest and so
+  dropped silently out of the numerator. The wall-clock window was
+  unaffected (those sessions overlapped existing intervals), so only
+  the ratio shifted: a 2026-05-23 reconciliation against the operator's
+  reference session-summary skill showed **2.1× → actual 3.1×**, a
+  ~33% undercount with no UI signal that the number was wrong.
+
+  Fix: `aggregateDay` now calls `backfillMissingManifests` as its
+  first step, synthesizing manifests for any transcript on disk that
+  doesn't yet have one. The headline metrics now reflect whatever
+  transcripts exist, not whichever subset of sessions happened to load
+  the plugin. Opt-out via `AggregatorOptions.autoBackfill: false` for
+  tests. See [ADR-0007](./ADRs/0007-aggregate-day-auto-backfills-missing-manifests.md)
+  for the full rationale, alternatives considered, and consequences.
+
+### Added
+
+- `AggregatorOptions.autoBackfill?: boolean` — opt-out for the new
+  auto-backfill in `aggregateDay`. Defaults to `true`.
+- `AggregatorOptions.projectsDir?: string` — override the Claude Code
+  projects directory the auto-backfill scans. Defaults to
+  `~/.claude/projects/`. Tests that mock `sessionsDir` should also set
+  `autoBackfill: false` (or supply both `sessionsDir` and
+  `projectsDir` as tmp paths) to stay isolated from the operator's
+  real transcript directory.
+
+### Tests
+
+- 289 unit tests passing (was 288). One new test exercises the
+  auto-backfill path: a transcript-without-manifest is synthesized
+  and shows up in the daily aggregate. The existing `aggregateDay
+  groups by start date` test now passes `autoBackfill: false` for
+  the same isolation reason.
+
 ## [1.0.0] — 2026-05-22
 
 **Stable release.** Promoted from `v1.0.0-rc.17` with no code

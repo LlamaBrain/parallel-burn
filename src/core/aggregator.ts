@@ -12,6 +12,7 @@
 
 import { readdir } from "node:fs/promises";
 
+import { backfillMissingManifests, defaultClaudeProjectsDir } from "./backfill.js";
 import { computeCost, type CostBreakdown } from "./cost.js";
 import { computeCompression, type Interval } from "./compression.js";
 import type { MessageEvent } from "./event.js";
@@ -99,6 +100,20 @@ export type AggregatorOptions = {
   readonly metaPathFor?: (sessionId: SessionId) => string;
   /** Inject a transcript reader (used by tests). */
   readonly readTranscriptFor?: (manifest: SessionManifest) => Promise<MessageEvent[]>;
+  /**
+   * Claude Code projects directory to scan when auto-backfilling. Only
+   * consulted by `aggregateDay`. Defaults to `~/.claude/projects/`.
+   */
+  readonly projectsDir?: string;
+  /**
+   * When true (default), `aggregateDay` synthesizes manifests for any
+   * transcript on disk that doesn't yet have one — see ADR-0007. This
+   * makes the report self-healing for sessions whose `SessionStart`
+   * hook never fired (background/headless Claude Code runs, or any
+   * project where the plugin isn't loaded). Set `false` in tests to
+   * keep `aggregateDay` a pure read of the provided sessions dir.
+   */
+  readonly autoBackfill?: boolean;
 };
 
 /**
@@ -256,6 +271,23 @@ export async function aggregateDay(
   options: AggregatorOptions = {},
   nowMs: number = Date.now(),
 ): Promise<DailyAggregate> {
+  // ADR-0007: ensure every transcript on disk has a manifest before
+  // reading the sessions dir. Without this, sessions whose SessionStart
+  // hook never fired (background/headless runs, projects where the
+  // plugin isn't loaded) silently drop out of the headline parallelism
+  // ratio — the bug that motivated the 1.0.1 patch. Best-effort; a
+  // backfill failure must not block the report, so we swallow errors
+  // and fall through to whatever manifests already exist.
+  if (options.autoBackfill !== false) {
+    try {
+      await backfillMissingManifests({
+        projectsDir: options.projectsDir ?? defaultClaudeProjectsDir(),
+        ...(options.sessionsDir !== undefined && { sessionsDir: options.sessionsDir }),
+      });
+    } catch {
+      /* best-effort — see comment above */
+    }
+  }
   const all = await listSessions(options);
   const onDay = all.filter((m) => {
     const lastActive = m.ended_at ?? m.last_seen_active;

@@ -390,6 +390,7 @@ describe("aggregator integration (manifest dir on disk)", () => {
 
     const day = await aggregateDay("2026-05-19", PRICING, {
       sessionsDir: tmp,
+      autoBackfill: false,
       readTranscriptFor: (m) =>
         Promise.resolve(
           m.session_id === "today-1"
@@ -400,6 +401,40 @@ describe("aggregator integration (manifest dir on disk)", () => {
     expect(day.sessions).toHaveLength(1);
     expect(day.sessions[0]?.sessionId).toBe("today-1");
     expect(day.totalCostUsd).toBeCloseTo(15, 8);
+  });
+
+  it("aggregateDay auto-backfills manifests for transcripts that lack one (ADR-0007)", async () => {
+    // Set up a Claude Code projects dir containing a transcript whose
+    // session has no manifest in the sessions dir. Without auto-
+    // backfill the session is invisible; with it, the headline metrics
+    // include the new session.
+    const projectsDir = await mkdtemp(join(tmpdir(), "parallel-burn-projects-"));
+    const sessionId = "00000000-0000-0000-0000-000000000abc";
+    // The backfill walker just calls readdir + recurses; the directory
+    // name doesn't have to match a real cwd encoding for the test.
+    const projectDir = join(projectsDir, "C--tmp-headless-bg-runner");
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(projectDir, { recursive: true });
+    const ts = "2026-05-19T10:00:00.000Z";
+    const transcriptLine = JSON.stringify({
+      type: "user",
+      cwd: "C:\\tmp\\headless-bg-runner",
+      timestamp: ts,
+    });
+    await writeFile(
+      join(projectDir, `${sessionId}.jsonl`),
+      `${transcriptLine}\n${transcriptLine}\n`,
+      "utf8",
+    );
+
+    const day = await aggregateDay("2026-05-19", PRICING, {
+      sessionsDir: tmp,
+      projectsDir,
+      readTranscriptFor: () => Promise.resolve([]),
+    });
+
+    expect(day.sessions.map((s) => s.sessionId)).toContain(sessionId);
+    await rm(projectsDir, { recursive: true, force: true });
   });
 
   it("aggregateFromManifest uses the default reader for missing transcripts (returns []) without throwing", async () => {
