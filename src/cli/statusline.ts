@@ -6,8 +6,12 @@
 // stdin, and is expected to print one line of text on stdout. That line
 // is rendered below the input area.
 //
-// ParallelBurn's statusline is parallelism-first: compression ratio, then
-// today's burn, then streak. Same priority as the overlay (Phase 7).
+// ParallelBurn's statusline is parallelism-first: the parallelism
+// multiplier (× compression ratio), then its inputs as `context / wall`
+// so the operator can see *why* the ratio is what it is, then cache hit
+// percent, then today's burn. Field set matches the OSD overlay's
+// primary metrics; streak and cache-discipline ratio live only in the
+// overlay (`/parallel-burn` and `/streak` cover them on demand).
 //
 // **Performance.** Statuslines run on the fast loop; re-aggregating
 // 1000+ session manifests on every tick is a disk hammer. The statusline
@@ -39,13 +43,9 @@ import {
   computeCompression,
   type Interval,
 } from "../core/compression.js";
-import {
-  computeStreak,
-  dateOf,
-  DEFAULT_DAILY_THRESHOLD_USD,
-} from "../core/streak.js";
+import { dateOf } from "../core/streak.js";
 import { readTranscript } from "../core/transcript.js";
-import { formatRatio, formatUsd } from "./format.js";
+import { formatDuration, formatRatio, formatUsd } from "./format.js";
 
 const SERVER_FETCH_TIMEOUT_MS = 250;
 
@@ -57,8 +57,6 @@ const SEP = `${DIM} · ${RESET}`;
 export type StatuslineInputs = {
   readonly today: string;
   readonly sessions: readonly SessionAggregate[];
-  readonly dailyCostUsd: ReadonlyMap<string, number>;
-  readonly thresholdUsd: number;
   readonly pricingStale: boolean;
 };
 
@@ -70,29 +68,74 @@ export function renderStatusline(inputs: StatuslineInputs): string {
       end: Date.parse(s.endedAt ?? s.lastSeenActive),
     }))
     .filter((i) => Number.isFinite(i.start) && Number.isFinite(i.end));
-  const { ratio } = computeCompression(intervals);
+  const { ratio, sessionContextMs, wallClockWindowMs } = computeCompression(intervals);
 
-  const totalToday = todays.reduce((acc, s) => acc + s.costUsd, 0);
-  const streak = computeStreak(inputs.dailyCostUsd, inputs.today, inputs.thresholdUsd);
+  let totalInput = 0;
+  let totalCacheRead = 0;
+  let totalCacheWrite = 0;
+  let totalCost = 0;
+  for (const s of todays) {
+    totalInput += s.inputTokens;
+    totalCacheRead += s.cacheReadTokens;
+    totalCacheWrite += s.cacheWriteTokens;
+    totalCost += s.costUsd;
+  }
+  const promptInputDenominator = totalInput + totalCacheWrite + totalCacheRead;
+  const cacheHitPercent =
+    promptInputDenominator > 0 ? (totalCacheRead / promptInputDenominator) * 100 : 0;
 
+  return formatStatusline({
+    ratio,
+    sessionContextMs,
+    wallClockWindowMs,
+    cacheHitPercent,
+    totalCostUsd: totalCost,
+    pricingStale: inputs.pricingStale,
+  });
+}
+
+type StatuslineFields = {
+  readonly ratio: number;
+  readonly sessionContextMs: number;
+  readonly wallClockWindowMs: number;
+  readonly cacheHitPercent: number;
+  readonly totalCostUsd: number;
+  readonly pricingStale: boolean;
+};
+
+function formatStatusline(f: StatuslineFields): string {
   const parts: string[] = [];
-  parts.push(`${ACCENT}⊕${RESET} ${formatRatio(ratio)} parallel`);
-  parts.push(`${formatUsd(totalToday)} today`);
-  parts.push(`streak ${String(streak)}d`);
-  if (inputs.pricingStale) {
+  parts.push(`${ACCENT}⊕${RESET} ${formatRatio(f.ratio)} parallel`);
+  parts.push(
+    `${formatDuration(f.sessionContextMs)} / ${formatDuration(f.wallClockWindowMs)} ${DIM}ctx/wall${RESET}`,
+  );
+  parts.push(`${formatCacheHitPercent(f.cacheHitPercent)} cache`);
+  parts.push(`${formatUsd(f.totalCostUsd)} today`);
+  if (f.pricingStale) {
     parts.push(`${DIM}pricing stale${RESET}`);
   }
   return parts.join(SEP);
+}
+
+/**
+ * Cache hit % saturates near 100 on healthy days, so one decimal place
+ * carries useful information without making the number look noisy.
+ * Mirrors the overlay's `fmtCacheHit` helper.
+ */
+function formatCacheHitPercent(p: number): string {
+  if (!Number.isFinite(p) || p < 0) return "—";
+  return `${p.toFixed(1)}%`;
 }
 
 type ServerSnapshot = {
   readonly date: string;
   readonly aggregate: {
     readonly compressionRatio: number;
+    readonly sessionContextMs: number;
+    readonly wallClockWindowMs: number;
+    readonly cacheHitPercent: number;
     readonly totalCostUsd: number;
-    readonly cacheDisciplineRatio: number;
   };
-  readonly streak: number;
   readonly pricingStale: boolean;
 };
 
@@ -100,15 +143,16 @@ function isServerSnapshot(x: unknown): x is ServerSnapshot {
   if (typeof x !== "object" || x === null || Array.isArray(x)) return false;
   const o = x as Record<string, unknown>;
   if (typeof o["date"] !== "string") return false;
-  if (typeof o["streak"] !== "number") return false;
   if (typeof o["pricingStale"] !== "boolean") return false;
   const a = o["aggregate"];
   if (typeof a !== "object" || a === null) return false;
   const ag = a as Record<string, unknown>;
   return (
     typeof ag["compressionRatio"] === "number" &&
-    typeof ag["totalCostUsd"] === "number" &&
-    typeof ag["cacheDisciplineRatio"] === "number"
+    typeof ag["sessionContextMs"] === "number" &&
+    typeof ag["wallClockWindowMs"] === "number" &&
+    typeof ag["cacheHitPercent"] === "number" &&
+    typeof ag["totalCostUsd"] === "number"
   );
 }
 
@@ -135,13 +179,14 @@ export async function fetchServerSnapshot(port: number): Promise<ServerSnapshot 
 }
 
 export function renderFromServerSnapshot(snap: ServerSnapshot): string {
-  return [
-    `${ACCENT}⊕${RESET} ${formatRatio(snap.aggregate.compressionRatio)} parallel`,
-    `${formatUsd(snap.aggregate.totalCostUsd)} today`,
-    `${formatRatio(snap.aggregate.cacheDisciplineRatio)} cache`,
-    `streak ${String(snap.streak)}d`,
-    ...(snap.pricingStale ? [`${DIM}pricing stale${RESET}`] : []),
-  ].join(SEP);
+  return formatStatusline({
+    ratio: snap.aggregate.compressionRatio,
+    sessionContextMs: snap.aggregate.sessionContextMs,
+    wallClockWindowMs: snap.aggregate.wallClockWindowMs,
+    cacheHitPercent: snap.aggregate.cacheHitPercent,
+    totalCostUsd: snap.aggregate.totalCostUsd,
+    pricingStale: snap.pricingStale,
+  });
 }
 
 /* v8 ignore start -- exercised in real Claude Code invocation. */
@@ -178,7 +223,6 @@ async function main(): Promise<void> {
     return Number.isFinite(t) && t >= sinceMs;
   });
   const aggregates: SessionAggregate[] = [];
-  const dailyCostUsd = new Map<string, number>();
   for (const m of recent) {
     let events: Awaited<ReturnType<typeof readTranscript>> = [];
     try {
@@ -186,17 +230,12 @@ async function main(): Promise<void> {
     } catch {
       events = [];
     }
-    const summary = summarizeSession(m, events, pricing);
-    aggregates.push(summary);
-    const d = dateOf(summary.startedAt);
-    dailyCostUsd.set(d, (dailyCostUsd.get(d) ?? 0) + summary.costUsd);
+    aggregates.push(summarizeSession(m, events, pricing));
   }
 
   const out = renderStatusline({
     today: dateOf(new Date().toISOString()),
     sessions: aggregates,
-    dailyCostUsd,
-    thresholdUsd: DEFAULT_DAILY_THRESHOLD_USD,
     pricingStale: pricing.isStale(),
   });
   process.stdout.write(out);

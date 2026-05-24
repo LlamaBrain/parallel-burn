@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Statusline field set realigned with the OSD overlay.** Swapped
+  the streak count and cache-discipline ratio for the parallelism
+  inputs (`ctx/wall`) and cache-hit percent. New order:
+  `× parallel · ctx/wall · N% cache · $ today`. Streak still
+  surfaces via `/streak`; cache-discipline ratio still lives in
+  the overlay's secondary grid. `StatuslineInputs` dropped
+  `dailyCostUsd` and `thresholdUsd`; the `/api/today` snapshot
+  validator now requires `sessionContextMs`, `wallClockWindowMs`,
+  and `cacheHitPercent` instead of `streak` and
+  `cacheDisciplineRatio`.
+
 ## [1.0.2] — 2026-05-24
 
 ### Added

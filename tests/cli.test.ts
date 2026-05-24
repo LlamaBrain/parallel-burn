@@ -231,7 +231,7 @@ describe("renderStreakReport", () => {
 });
 
 describe("renderStatusline", () => {
-  it("leads with parallelism, then dollars, then streak", () => {
+  it("orders parallelism, ctx/wall, cache, dollars and omits streak", () => {
     const inputs: StatuslineInputs = {
       today: "2026-05-19",
       sessions: [
@@ -241,6 +241,9 @@ describe("renderStatusline", () => {
           cost: 60,
           startedAt: "2026-05-19T10:00:00Z",
           endedAt: "2026-05-19T11:00:00Z",
+          in: 1000,
+          read: 9000,
+          write: 0,
         }),
         exampleSession({
           id: "b",
@@ -250,8 +253,6 @@ describe("renderStatusline", () => {
           endedAt: "2026-05-19T11:30:00Z",
         }),
       ],
-      dailyCostUsd: new Map([["2026-05-19", 90]]),
-      thresholdUsd: 50,
       pricingStale: false,
     };
     const out = renderStatusline(inputs);
@@ -259,13 +260,19 @@ describe("renderStatusline", () => {
     // eslint-disable-next-line no-control-regex
     const plain = out.replace(/\[[0-9;]*m/g, "");
     const parIdx = plain.indexOf("parallel");
+    const ctxIdx = plain.indexOf("ctx/wall");
+    const cacheIdx = plain.indexOf("cache");
     const dollarIdx = plain.indexOf("$");
-    const streakIdx = plain.indexOf("streak");
     expect(parIdx).toBeGreaterThan(-1);
-    expect(dollarIdx).toBeGreaterThan(parIdx);
-    expect(streakIdx).toBeGreaterThan(dollarIdx);
+    expect(ctxIdx).toBeGreaterThan(parIdx);
+    expect(cacheIdx).toBeGreaterThan(ctxIdx);
+    expect(dollarIdx).toBeGreaterThan(cacheIdx);
     expect(plain).toContain("$90.00 today");
-    expect(plain).toContain("streak 1d");
+    // Two 1-hour sessions overlapping for 30m → ctx 2h, wall 1h 30m.
+    expect(plain).toContain("2h 0m / 1h 30m");
+    // 9000 / (1000 + 0 + 9000) = 90%.
+    expect(plain).toContain("90.0% cache");
+    expect(plain).not.toContain("streak");
   });
 
   it("filters non-today sessions out of the parallelism calc", () => {
@@ -287,11 +294,6 @@ describe("renderStatusline", () => {
           endedAt: "2026-05-18T11:00:00Z",
         }),
       ],
-      dailyCostUsd: new Map([
-        ["2026-05-19", 10],
-        ["2026-05-18", 999],
-      ]),
-      thresholdUsd: 50,
       pricingStale: false,
     };
     const out = renderStatusline(inputs);
@@ -300,12 +302,20 @@ describe("renderStatusline", () => {
     expect(plain).toContain("$10.00 today");
   });
 
+  it("renders 0.0% cache when there are no prompt-input tokens", () => {
+    const inputs: StatuslineInputs = {
+      today: "2026-05-19",
+      sessions: [],
+      pricingStale: false,
+    };
+    const out = renderStatusline(inputs);
+    expect(out).toContain("0.0% cache");
+  });
+
   it("appends a stale-pricing tag when applicable", () => {
     const inputs: StatuslineInputs = {
       today: "2026-05-19",
       sessions: [],
-      dailyCostUsd: new Map(),
-      thresholdUsd: 50,
       pricingStale: true,
     };
     const out = renderStatusline(inputs);
