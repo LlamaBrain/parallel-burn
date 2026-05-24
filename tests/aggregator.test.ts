@@ -8,6 +8,7 @@ import {
   aggregateDay,
   aggregateFromManifest,
   aggregateSession,
+  listActiveDates,
   listSessions,
   rollUpDay,
   summarizeSession,
@@ -370,6 +371,41 @@ describe("aggregator integration (manifest dir on disk)", () => {
     const found = await listSessions({ sessionsDir: tmp });
     expect(found).toHaveLength(2);
     expect(found.map((m) => m.session_id).sort()).toEqual(["s-1", "s-2"]);
+  });
+
+  it("listActiveDates returns sorted distinct local dates across all manifests", async () => {
+    // Three sessions spanning two days, plus a duplicate on the same
+    // day to confirm dedup. `last_seen_active` (synthesized from the
+    // start time when ended_at is absent) is what dateOf() reads.
+    const m1 = manifest({
+      sessionId: "a",
+      project: "parallel-burn",
+      startedAt: "2026-05-19T10:00:00Z",
+      endedAt: "2026-05-19T11:00:00Z",
+    });
+    const m2 = manifest({
+      sessionId: "b",
+      project: "parallel-burn",
+      startedAt: "2026-05-19T14:00:00Z",
+      endedAt: "2026-05-19T15:00:00Z",
+    });
+    const m3 = manifest({
+      sessionId: "c",
+      project: "other",
+      startedAt: "2026-05-20T09:00:00Z",
+      endedAt: "2026-05-20T10:00:00Z",
+    });
+    await writeManifest(join(tmp, "a.meta.json"), m1);
+    await writeManifest(join(tmp, "b.meta.json"), m2);
+    await writeManifest(join(tmp, "c.meta.json"), m3);
+
+    const dates = await listActiveDates({ sessionsDir: tmp });
+    expect(dates).toEqual(["2026-05-19", "2026-05-20"]);
+  });
+
+  it("listActiveDates returns [] for an empty sessions dir", async () => {
+    const dates = await listActiveDates({ sessionsDir: tmp });
+    expect(dates).toEqual([]);
   });
 
   it("aggregateDay groups by start date and uses the injected transcript reader", async () => {

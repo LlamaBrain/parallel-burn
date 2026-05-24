@@ -14,9 +14,12 @@
 // Binds to 127.0.0.1 only. No auth — the threat model is single-user
 // local machine.
 
+import { readFileSync } from "node:fs";
 import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { aggregateDay, type DailyAggregate, listSessions } from "../core/aggregator.js";
+import { aggregateDay, type DailyAggregate, listActiveDates, listSessions } from "../core/aggregator.js";
 import {
   computeActiveStreak,
   computeLongestActiveStreak,
@@ -29,6 +32,26 @@ import { OVERLAY_HTML } from "./overlay.js";
 
 const LOCALHOST = "127.0.0.1";
 const SSE_HEARTBEAT_MS = 15_000;
+
+/**
+ * Plugin version, read once at module init. The overlay displays this so
+ * the operator can tell at a glance which build is running — non-obvious
+ * since the plugin auto-respawns and the cache can hold several side-by-
+ * side versions. Source of truth is `package.json`, which the local-
+ * install script copies next to `dist/` (see scripts/install-local.mjs).
+ * If the file is missing (unexpected — a malformed install), fall back
+ * to "unknown" rather than crashing the server.
+ */
+const PBURN_VERSION: string = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkgPath = join(here, "..", "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+})();
 /** Fast-path poll: today's aggregate (small, cheap). */
 const TODAY_POLL_INTERVAL_MS = 15_000;
 /** Slow-path refresh: re-read Claude Code's stats cache for the streak. */
@@ -67,6 +90,8 @@ export type LiveSnapshot = {
   readonly pricingStale: boolean;
   /** Iso8601 of when this snapshot was last computed. */
   readonly computedAt: string;
+  /** Plugin semver, surfaced on the overlay so the operator can see which build is live. */
+  readonly pburnVersion: string;
 };
 
 /**
@@ -100,6 +125,7 @@ export async function buildSnapshot(config: ServerConfig): Promise<LiveSnapshot>
     pricingAsOf: pricing.asOf,
     pricingStale: pricing.isStale(),
     computedAt: new Date().toISOString(),
+    pburnVersion: PBURN_VERSION,
   };
 }
 
@@ -175,6 +201,7 @@ async function buildTodaySnapshot(
     pricingAsOf: pricing.asOf,
     pricingStale: pricing.isStale(),
     computedAt: new Date().toISOString(),
+    pburnVersion: PBURN_VERSION,
   };
 }
 
@@ -327,6 +354,10 @@ async function handleRequest(
     await handleDayRequest(req, res, ctx);
     return;
   }
+  if (url === "/api/active-dates") {
+    await handleActiveDatesRequest(res, ctx);
+    return;
+  }
   if (url === "/events") {
     handleSse(req, res, ctx);
     return;
@@ -336,6 +367,30 @@ async function handleRequest(
 }
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Once a day is in the past it's immutable — no new sessions will start
+ * with a `last_seen_active` in yesterday — so the aggregate is stable as
+ * long as the pricing snapshot doesn't change underneath us. The first
+ * `/api/day?date=YYYY-MM-DD` for a past day pays the read + parse cost
+ * (seconds, even with parallel aggregation); subsequent picks of the
+ * same date in the overlay's date picker should be instant. Cache keyed
+ * by date; entry invalidated when `pricing.asOf` no longer matches.
+ */
+type CachedDay = { readonly pricingAsOf: string | null; readonly payload: string };
+const PAST_DAY_CACHE_MAX = 64;
+const pastDayCache = new Map<string, CachedDay>();
+
+/**
+ * `/api/active-dates` is polled by the overlay's day-strip — every fetch
+ * walks every manifest header, which is fast but not free for an
+ * operator with months of history. A short TTL is fine because the set
+ * only grows: a new date appears the moment a session lands on a fresh
+ * day, and that's plenty visible within a minute.
+ */
+const ACTIVE_DATES_TTL_MS = 60_000;
+type CachedActiveDates = { readonly computedAt: number; readonly payload: string };
+let activeDatesCache: CachedActiveDates | null = null;
 
 /**
  * One-off aggregate for a historical day. Computed fresh, not from the
@@ -358,25 +413,86 @@ async function handleDayRequest(
   }
   try {
     const pricing = await PricingProvider.fromFile(ctx.config.pricingFile);
+    const today = dateOf(new Date().toISOString());
+    // YYYY-MM-DD strings sort lexically as dates, so direct `<` works.
+    const isPast = date < today;
+    if (isPast) {
+      const cached = pastDayCache.get(date);
+      if (cached !== undefined && cached.pricingAsOf === pricing.asOf) {
+        res.writeHead(HTTP_OK, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        res.end(cached.payload);
+        return;
+      }
+    }
     const aggregatorOptions = ctx.config.sessionsDir !== undefined
       ? { sessionsDir: ctx.config.sessionsDir, autoBackfill: false }
       : {};
     const aggregate = await aggregateDay(date, pricing, aggregatorOptions);
-    res.writeHead(HTTP_OK, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    });
-    res.end(JSON.stringify({
+    const payload = JSON.stringify({
       date,
       aggregate,
       pricingAsOf: pricing.asOf,
       pricingStale: pricing.isStale(),
       computedAt: new Date().toISOString(),
-    }));
+      pburnVersion: PBURN_VERSION,
+    });
+    if (isPast) {
+      // Evict oldest insertion (Map iteration order = insertion order) to
+      // keep the cache bounded. We don't track LRU here — the access
+      // pattern is "operator clicks through a calendar"; an LRU map
+      // would just add code for the same eventual eviction.
+      if (pastDayCache.size >= PAST_DAY_CACHE_MAX) {
+        const firstKey = pastDayCache.keys().next().value;
+        if (firstKey !== undefined) pastDayCache.delete(firstKey);
+      }
+      pastDayCache.set(date, { pricingAsOf: pricing.asOf, payload });
+    }
+    res.writeHead(HTTP_OK, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(payload);
   } catch (err) {
     res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({
       error: "aggregation failed",
+      detail: err instanceof Error ? err.message : String(err),
+    }));
+  }
+}
+
+async function handleActiveDatesRequest(
+  res: ServerResponse,
+  ctx: RequestContext,
+): Promise<void> {
+  const now = Date.now();
+  if (activeDatesCache !== null && now - activeDatesCache.computedAt < ACTIVE_DATES_TTL_MS) {
+    res.writeHead(HTTP_OK, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(activeDatesCache.payload);
+    return;
+  }
+  try {
+    const aggregatorOptions = ctx.config.sessionsDir !== undefined
+      ? { sessionsDir: ctx.config.sessionsDir, autoBackfill: false }
+      : {};
+    const dates = await listActiveDates(aggregatorOptions);
+    const payload = JSON.stringify({ dates });
+    activeDatesCache = { computedAt: now, payload };
+    res.writeHead(HTTP_OK, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(payload);
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({
+      error: "active-dates failed",
       detail: err instanceof Error ? err.message : String(err),
     }));
   }
@@ -440,6 +556,7 @@ function emptySnapshotJson(): string {
     pricingAsOf: "",
     pricingStale: false,
     computedAt: new Date().toISOString(),
+    pburnVersion: PBURN_VERSION,
     warming: true,
   });
 }

@@ -229,6 +229,22 @@ export function summarizeSession(
 /**
  * List every session manifest currently on disk.
  */
+/**
+ * Distinct local-date strings (YYYY-MM-DD) across all manifests, sorted
+ * ascending. Powers the overlay's "which days have data" strip — a
+ * filled dot per active day next to the date picker. Cheap: reads
+ * manifest headers only (no transcripts).
+ */
+export async function listActiveDates(options: AggregatorOptions = {}): Promise<string[]> {
+  const manifests = await listSessions(options);
+  const dates = new Set<string>();
+  for (const m of manifests) {
+    const lastActive = m.ended_at ?? m.last_seen_active;
+    dates.add(dateOf(lastActive));
+  }
+  return Array.from(dates).sort();
+}
+
 export async function listSessions(options: AggregatorOptions = {}): Promise<SessionManifest[]> {
   const dir = options.sessionsDir ?? parallelBurnSessionsDir();
   let entries: string[];
@@ -265,6 +281,17 @@ function isFileNotFound(err: unknown): boolean {
  *
  * `nowMs` lets tests pin "now" to a deterministic moment.
  */
+/**
+ * Per-day parallelism limit for transcript reads. Each session aggregation
+ * does one transcript read + JSONL parse; on a busy day (100+ sessions)
+ * the sequential `for (const m of onDay) { await … }` shape costs 15–30 s.
+ * Fanning out via `Promise.all` collapses that to a handful of seconds.
+ * We chunk rather than fire-and-forget so a 500-session day doesn't open
+ * 500 file handles at once; 32 keeps the libuv pool saturated without
+ * pathological memory pressure (each transcript can be MBs).
+ */
+const AGGREGATE_DAY_CONCURRENCY = 32;
+
 export async function aggregateDay(
   date: string,
   pricing: PricingProvider,
@@ -293,9 +320,16 @@ export async function aggregateDay(
     const lastActive = m.ended_at ?? m.last_seen_active;
     return dateOf(lastActive) === date;
   });
-  const sessions: SessionAggregate[] = [];
-  for (const m of onDay) {
-    sessions.push(await aggregateFromManifest(m, pricing, options));
+  const sessions: SessionAggregate[] = new Array<SessionAggregate>(onDay.length);
+  for (let i = 0; i < onDay.length; i += AGGREGATE_DAY_CONCURRENCY) {
+    const slice = onDay.slice(i, i + AGGREGATE_DAY_CONCURRENCY);
+    const batch = await Promise.all(
+      slice.map((m) => aggregateFromManifest(m, pricing, options)),
+    );
+    for (let j = 0; j < batch.length; j += 1) {
+      const aggregate = batch[j];
+      if (aggregate !== undefined) sessions[i + j] = aggregate;
+    }
   }
   return rollUpDay(date, sessions, nowMs);
 }

@@ -197,6 +197,29 @@ describe("server HTTP endpoints", () => {
     });
   });
 
+  it("returns sorted distinct dates at /api/active-dates", async () => {
+    await withServer(async (handle) => {
+      const res = await fetch(`${urlOf(handle)}/api/active-dates`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      const body = (await res.json()) as { dates: string[] };
+      expect(Array.isArray(body.dates)).toBe(true);
+      // The test sessionsDir is empty in withServer's setup, so the
+      // response is just `[]` — what matters is the shape contract,
+      // which the overlay's day strip depends on.
+      expect(body.dates).toEqual([]);
+    });
+  });
+
+  it("includes pburnVersion in the live snapshot", async () => {
+    await withServer(async (handle) => {
+      const res = await fetch(`${urlOf(handle)}/api/today`);
+      const snap = (await res.json()) as Record<string, unknown>;
+      expect(typeof snap["pburnVersion"]).toBe("string");
+      expect((snap["pburnVersion"] as string).length).toBeGreaterThan(0);
+    });
+  });
+
   it("binds to 127.0.0.1 only (security: not 0.0.0.0)", async () => {
     await withServer((handle) => {
       const addr = handle.server.address();

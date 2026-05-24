@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-05-24
+
+### Added
+
+- **Overlay date picker** — the live overlay now hosts a native
+  `<input type="date">` in its header so historical days can be
+  inspected without leaving the browser tab. Today's date is the
+  upper bound; the lower bound is clamped to the earliest manifest
+  on disk (see day strip below). The picker drives the same render
+  path as the live SSE feed; while a past day is selected the
+  per-15-second `/api/today` push is filtered out so it can't
+  overwrite the historical view.
+- **Day-strip activity indicator on the overlay.** A row of 30
+  dots between the header and the headline ratio — one per day
+  going back from today. Filled (accent) = the day has at least
+  one manifest, hollow = no data. The currently-selected day is
+  enlarged and ringed. Click any dot to jump. Hover for the date
+  (and `(no data)` annotation for empty days). Compact answer to
+  "which days are worth picking" — native `<input type="date">`
+  can't be styled per-day, so the strip lives next to it instead
+  of trying to override the calendar widget.
+- **`GET /api/active-dates`** — returns `{ dates: string[] }`,
+  sorted ascending YYYY-MM-DD. Powers the day strip. Walks manifest
+  headers only (no transcript reads); response cached server-side
+  for 60 s.
+- **`listActiveDates(options)` in `src/core/aggregator.ts`** —
+  thin wrapper over `listSessions` that derefs `ended_at ??
+  last_seen_active`, projects to `dateOf()`, and dedupes. Same
+  filesystem semantics as `listSessions`.
+- **Plugin version displayed in the overlay footer** as
+  `v1.0.2 · pricing 2026-05-22`. Read from `package.json` once at
+  server boot into `PBURN_VERSION`, threaded through
+  `LiveSnapshot.pburnVersion` and the `/api/day` payload. Non-
+  obvious which build is live since the plugin auto-respawns and
+  the plugin cache can hold several side-by-side versions; this
+  makes it visible at a glance.
+
+### Changed
+
+- **`aggregateDay` parallelizes the per-session aggregation loop.**
+  The previous shape was `for (const m of onDay) { await
+  aggregateFromManifest(...) }`, sequential — on a 171-session day
+  that was 15–30 s of mostly-idle wait on file I/O. Replaced with
+  chunked `Promise.all` at concurrency 32, named via
+  `AGGREGATE_DAY_CONCURRENCY`. Bounds the in-flight count so a
+  500-session day doesn't open 500 file handles at once. Ordering
+  is preserved (Promise.all is input-order).
+- **`/api/day` caches past-day responses in memory** keyed by
+  date, invalidated when `pricing.asOf` changes underneath it.
+  Past days are immutable once `YYYY-MM-DD < today`, so the
+  endpoint that took 15–28 s for a busy historical day now serves
+  cached hits in <10 ms. Bounded at 64 entries with FIFO eviction;
+  the access pattern is "operator clicks through a calendar," not
+  LRU-shaped, so an LRU map would just be code for the same
+  eventual eviction. Today's date intentionally bypasses the
+  cache — that's what `/api/today` is for.
+
+### Overlay polish
+
+- **`AbortController` cancels in-flight `/api/day` fetches** on a
+  fresh date pick. A stale response can no longer sneak in and
+  clobber the current selection if the operator clicks rapidly.
+  Both the AbortController signal and a `pickedAt !== selectedDate`
+  guard back-stop each other.
+- **Loading state on the overlay card** — clicking a date or a
+  dot dims the card to 0.6 opacity until the response renders.
+  Immediate visual confirmation that the click registered, even
+  when the cold path still takes seconds.
+- **`color-scheme: dark` on the overlay root** so the native
+  date picker's calendar widget paints in a dark palette rather
+  than the browser default light theme that fought the rest of
+  the UI.
+- **Defensive streak rendering** — `/api/day` doesn't compute a
+  streak (the cache only holds today's), so the streak metric
+  renders as `—` for historical views instead of crashing on the
+  missing field.
+
+### Internal
+
+- `tests/aggregator.test.ts` — added two tests for `listActiveDates`
+  (dedup + sorted output, empty-dir case).
+- `tests/server.test.ts` — added smoke tests for `/api/active-dates`
+  and the new `pburnVersion` field on `/api/today`.
+- 293/293 tests pass; typecheck and lint clean.
+
 ## [1.0.1] — 2026-05-23
 
 ### Fixed
