@@ -200,12 +200,46 @@ describe("computeCost — unknown model", () => {
     expect(c.model).toBe("claude-future-model");
   });
 
-  it("CONSERVATIVE_FALLBACK_POLICY documents max-output selector + overestimate direction", () => {
+  it("CONSERVATIVE_FALLBACK_POLICY documents the family-first selector + direction", () => {
     // This test exists to keep the constant and its rationale in lockstep:
     // if the implementation drifts (e.g. someone changes pickConservativeFallback
     // to use a different selector), the constant must move with it.
-    expect(CONSERVATIVE_FALLBACK_POLICY.selector).toBe("max-output-per-mtok");
-    expect(CONSERVATIVE_FALLBACK_POLICY.direction).toBe("overestimates");
+    expect(CONSERVATIVE_FALLBACK_POLICY.selector).toBe("latest-known-in-family-else-max-output");
+    expect(CONSERVATIVE_FALLBACK_POLICY.direction).toBe("matches-family-rate-else-overestimates");
+  });
+
+  it("prices an unknown model at its own family's latest rate, not the globally most expensive model", () => {
+    // Regression for the opus-4-8 incident (ADR-0008): the card still lists
+    // the retired, pricey opus-4-1 ($75 output) alongside the current opus-4-7
+    // ($25). A not-yet-carded opus-4-8 must inherit the *current* Opus rate via
+    // its family, not get billed 3× at the global-max opus-4-1 rate.
+    const doc: PricingDocument = {
+      schema_version: "1.0",
+      as_of: "2026-05-01",
+      source: "test",
+      currency: "USD",
+      models: {
+        "claude-opus-4-1": {
+          input_per_mtok: 15, output_per_mtok: 75,
+          cache_write_5m_per_mtok: 18.75, cache_write_1h_per_mtok: 30, cache_read_per_mtok: 1.5,
+        },
+        "claude-opus-4-7": {
+          input_per_mtok: 5, output_per_mtok: 25,
+          cache_write_5m_per_mtok: 6.25, cache_write_1h_per_mtok: 10, cache_read_per_mtok: 0.5,
+        },
+        "claude-sonnet-4-6": {
+          input_per_mtok: 3, output_per_mtok: 15,
+          cache_write_5m_per_mtok: 3.75, cache_write_1h_per_mtok: 6, cache_read_per_mtok: 0.3,
+        },
+      },
+    };
+    const c = computeCost(
+      event("claude-opus-4-8", { output_tokens: 1_000_000 }),
+      PricingProvider.fromDocument(doc),
+    );
+    expect(c.unknownModel).toBe(true);
+    expect(c.conservativeFallbackModel).toBe("claude-opus-4-7");
+    expect(c.output).toBeCloseTo(25, 10); // $25 at the family rate, not $75
   });
 
   it("conservative fallback is always the model with the highest output_per_mtok", () => {

@@ -86,10 +86,9 @@ function manifest(args: {
 
 describe("summarizeSession", () => {
   it("sums cost and tokens across events and derives duration from event timestamps", () => {
-    // Events span 10:00:00 → 11:00:00 — the summarizer now prefers
-    // event-derived timestamps over the manifest's started_at /
-    // last_seen_active when the session is still open. The manifest's
-    // ended_at is explicitly set here, so endedAt should match it.
+    // Events span 10:00:00 → 11:00:00. The summarizer derives the active
+    // span from event timestamps whenever the transcript has them. The
+    // manifest's ended_at is set here too, so endedAt should match it.
     const m = manifest({
       sessionId: "s-1",
       project: "parallel-burn",
@@ -108,6 +107,29 @@ describe("summarizeSession", () => {
     expect(summary.durationMs).toBe(60 * 60 * 1000);
     expect(summary.endedAt).toBe("2026-05-19T11:00:00.000Z");
     expect(summary.unknownModel).toBe(false);
+  });
+
+  it("derives active span from events even when a backfilled manifest's ended_at is a stale narrow window", () => {
+    // Regression: backfilled manifests (claude-mem observer, headless runs,
+    // un-instrumented projects) synthesize started_at/ended_at from a window
+    // that can be a few seconds wide. The transcript is the truth — this
+    // session was active for 5 minutes. Trusting the manifest's 6-second
+    // ended_at collapsed such sessions to ~0 duration and silently erased
+    // real concurrent context from the parallelism numerator (1.6x vs 2.4x).
+    const m = manifest({
+      sessionId: "s-backfilled",
+      project: "observer-sessions",
+      startedAt: "2026-05-28T12:00:00.000Z",
+      lastSeenActive: "2026-05-28T12:00:06.000Z",
+      endedAt: "2026-05-28T12:00:06.000Z",
+    });
+    const evs: MessageEvent[] = [
+      { ...event("claude-opus-4-7", { in: 100, out: 100 }), timestamp: "2026-05-28T12:00:00Z" },
+      { ...event("claude-opus-4-7", { in: 100, out: 100 }), timestamp: "2026-05-28T12:05:00Z" },
+    ];
+    const summary = summarizeSession(m, evs, PRICING);
+    expect(summary.durationMs).toBe(5 * 60 * 1000);
+    expect(summary.lastSeenActive).toBe("2026-05-28T12:05:00.000Z");
   });
 
   it("flags unknownModel when any event uses an unknown model", () => {

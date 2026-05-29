@@ -16,28 +16,34 @@ import type { ModelPricing, PricingProvider } from "./pricing.js";
  * is unclear, log a warning and use a conservative fallback. Do not
  * silently zero-cost an unknown model."
  *
- * **Direction.** The fallback overestimates rather than underestimates.
- * Among all models in the rate card, we pick the one with the highest
- * `output_per_mtok` — output tokens dominate the cost of a typical Claude
- * session, so picking the highest output rate guarantees an upper bound
- * on the unknown model's true cost. (Input/cache rates are dragged along
- * from the same model; they're not selected independently.)
+ * **Two-stage selection.**
  *
- * **Why upper-bound and not lower-bound.** A user who sees an inflated
- * dollar number on the overlay loses trust gradually as they reconcile
- * against their Anthropic console. A user who sees an under-counted total
- * thinks they have more budget than they do and spends accordingly. The
- * second failure mode is more harmful.
+ * 1. *Same-family proxy (preferred).* When the unknown model names a known
+ *    tier — `claude-opus-*`, `claude-sonnet-*`, `claude-haiku-*` — use the
+ *    rates of the highest-version model already carded in that family.
+ *    Anthropic prices a new model like its most recent sibling: the Opus
+ *    line held $5/$25 per Mtok across 4-5 / 4-6 / 4-7, so a not-yet-carded
+ *    `claude-opus-4-8` should inherit *that*, not the retired
+ *    `claude-opus-4-0` / `-4-1` rate of $15/$75. This is the case that bit
+ *    us — the global-max rule below billed opus-4-8 at 3× its true rate
+ *    until the card was updated (see ADR-0008).
+ *
+ * 2. *Global max-output (fallback's fallback).* For a model with no carded
+ *    family sibling — a genuinely new tier — pick the highest
+ *    `output_per_mtok` in the whole card. Output dominates a typical
+ *    session, so the highest output rate is an upper bound on the unknown
+ *    tier's true cost, and over-counting is the safer error: a user who
+ *    under-counts thinks they have budget they don't.
  *
  * **Why not zero.** Zero-costing an unknown model would silently hide
  * spend; the operator might never notice that an entire model family is
- * uncosted. The flag `unknownModel: true` on the CostBreakdown lets
- * higher layers surface a count to the user (see
- * `DailyAggregate.unknownModelSessionCount`).
+ * uncosted. The flag `unknownModel: true` on the CostBreakdown lets higher
+ * layers surface a count to the user (see
+ * `DailyAggregate.unknownModelSessionCount`) whichever stage fired.
  */
 export const CONSERVATIVE_FALLBACK_POLICY = {
-  selector: "max-output-per-mtok",
-  direction: "overestimates",
+  selector: "latest-known-in-family-else-max-output",
+  direction: "matches-family-rate-else-overestimates",
 } as const;
 
 const TOKENS_PER_MTOK = 1_000_000;
@@ -74,7 +80,7 @@ export function computeCost(
   if (known) {
     return buildBreakdown(event, known, event.model, false, null);
   }
-  const fallback = pickConservativeFallback(pricing);
+  const fallback = pickConservativeFallback(event.model, pricing);
   return buildBreakdown(event, fallback.rates, event.model, true, fallback.name);
 }
 
@@ -131,7 +137,58 @@ function buildBreakdown(
   };
 }
 
-function pickConservativeFallback(
+/**
+ * Anthropic model IDs look like `claude-<tier>-<major>-<minor>[-<date>]`
+ * (e.g. `claude-opus-4-8`, `claude-sonnet-4-5-20250929`). We match the tier
+ * and version prefix; any trailing date or other suffix is ignored.
+ */
+const MODEL_FAMILY_PATTERN = /^claude-(opus|sonnet|haiku)-(\d+)-(\d+)/;
+
+type FamilyVersion = { readonly tier: string; readonly major: number; readonly minor: number };
+
+function parseFamilyVersion(model: string): FamilyVersion | null {
+  const m = MODEL_FAMILY_PATTERN.exec(model);
+  if (m === null) return null;
+  const tier = m[1];
+  const major = Number(m[2]);
+  const minor = Number(m[3]);
+  if (tier === undefined || !Number.isFinite(major) || !Number.isFinite(minor)) {
+    return null;
+  }
+  return { tier, major, minor };
+}
+
+/**
+ * Stage 1 of CONSERVATIVE_FALLBACK_POLICY: the highest-version carded model
+ * that shares the unknown model's tier. Returns null when the model names no
+ * recognizable tier, or the card holds no sibling in that tier.
+ */
+function pickLatestInFamily(
+  model: string,
+  pricing: PricingProvider,
+): { name: string; rates: ModelPricing } | null {
+  const target = parseFamilyVersion(model);
+  if (target === null) return null;
+  let best: { name: string; rates: ModelPricing; v: FamilyVersion } | null = null;
+  for (const [name, rates] of pricing.entries()) {
+    const v = parseFamilyVersion(name);
+    if (v === null || v.tier !== target.tier) continue;
+    if (
+      best === null ||
+      v.major > best.v.major ||
+      (v.major === best.v.major && v.minor > best.v.minor)
+    ) {
+      best = { name, rates, v };
+    }
+  }
+  return best === null ? null : { name: best.name, rates: best.rates };
+}
+
+/**
+ * Stage 2: the globally highest `output_per_mtok` — an upper bound for a
+ * model whose tier we don't recognize at all.
+ */
+function pickMaxOutput(
   pricing: PricingProvider,
 ): { name: string; rates: ModelPricing } {
   let best: { name: string; rates: ModelPricing } | null = null;
@@ -144,4 +201,11 @@ function pickConservativeFallback(
     throw new EmptyPricingError();
   }
   return best;
+}
+
+function pickConservativeFallback(
+  model: string,
+  pricing: PricingProvider,
+): { name: string; rates: ModelPricing } {
+  return pickLatestInFamily(model, pricing) ?? pickMaxOutput(pricing);
 }

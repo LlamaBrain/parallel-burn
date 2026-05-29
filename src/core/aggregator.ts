@@ -189,21 +189,30 @@ export function summarizeSession(
     }
   }
 
-  // Prefer event-derived timestamps over manifest fields when available.
-  // For backfilled-but-stale manifests of still-active sessions, the
-  // manifest's last_seen_active lags reality by however long it's been
-  // since the last backfill — but the transcript itself stays current.
+  // The transcript's own event timestamps are ground truth for when a session
+  // was *active*; the manifest's started_at / ended_at / last_seen_active are
+  // reliable only for sessions our own hooks instrumented. For backfilled
+  // sessions — background/headless runs, the claude-mem observer, any project
+  // where the plugin isn't loaded — the manifest is synthesized from a narrow
+  // window (often a few seconds) and would collapse a multi-minute session to
+  // near-zero duration, silently erasing real concurrent context from the
+  // parallelism numerator (the bug that made a 2.4x day read as 1.6x). So
+  // whenever the transcript yielded timestamps, the active span is
+  // [earliest event, latest event]; the manifest is only a fallback for
+  // transcripts we couldn't read.
+  // earliestEventTs and latestEventTs are set together — both null when the
+  // transcript yielded no parseable timestamps, both non-null otherwise.
   const startedAt =
-    earliestEventTs !== null && (manifest.ended_at === null || earliestEventTs > 0)
+    earliestEventTs !== null
       ? new Date(earliestEventTs).toISOString()
       : manifest.started_at;
   const lastSeenActive =
-    latestEventTs !== null && manifest.ended_at === null
+    latestEventTs !== null
       ? new Date(latestEventTs).toISOString()
-      : manifest.last_seen_active;
+      : (manifest.ended_at ?? manifest.last_seen_active);
 
   const startMs = Date.parse(startedAt);
-  const endMs = Date.parse(manifest.ended_at ?? lastSeenActive);
+  const endMs = Date.parse(lastSeenActive);
   const durationMs = Number.isFinite(startMs) && Number.isFinite(endMs)
     ? Math.max(0, endMs - startMs)
     : 0;
@@ -347,10 +356,14 @@ export function rollUpDay(
   sessions: readonly SessionAggregate[],
   nowMs: number = Date.now(),
 ): DailyAggregate {
+  // `lastSeenActive` already carries the true end of activity: the latest
+  // event timestamp when the transcript was readable, the manifest's own end
+  // otherwise (see summarizeSession). Use it directly rather than preferring
+  // the raw manifest `endedAt`, which is unreliable for backfilled sessions.
   const rawIntervals: Interval[] = sessions
     .map((s) => ({
       start: Date.parse(s.startedAt),
-      end: Date.parse(s.endedAt ?? s.lastSeenActive),
+      end: Date.parse(s.lastSeenActive),
     }))
     .filter((i) => Number.isFinite(i.start) && Number.isFinite(i.end));
 

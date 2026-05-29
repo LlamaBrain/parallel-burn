@@ -7,8 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-05-29
+
+### Fixed
+
+- **`claude-opus-4-8` was costed at 3× retail.** The model was missing
+  from `pricing.json`, so `computeCost` fell back to the most expensive
+  carded model (`claude-opus-4-1`, $15/$75 per Mtok) — 3× the current
+  Opus rate. A heavy day (2026-05-28) read **$2,102.80** instead of
+  **$1,318.94** (+$783.86, 37%). Added the `claude-opus-4-8` rate
+  ($5/$25/$6.25/$10/$0.50) and bumped `pricing.json` `as_of` to 2026-05-29.
+- **Parallelism under-reported for backfilled sessions.** `summarizeSession`
+  trusted the manifest's `ended_at` for the end of closed sessions.
+  Backfilled manifests (the claude-mem observer, headless runs, projects
+  without the plugin) synthesize a window only seconds wide, collapsing
+  multi-minute sessions to ~0 duration and silently dropping real
+  concurrent context from the parallelism numerator. The active span is
+  now taken from transcript event timestamps `[earliest, latest]` whenever
+  present, with the manifest as a fallback only. 2026-05-28 corrected from
+  **1.6× to 2.4×** (25.45h → 38.00h of session-context).
+
 ### Changed
 
+- **Unknown-model pricing fallback is now family-aware (ADR-0008).** When a
+  model is absent from the rate card, `computeCost` first uses the
+  highest-version carded model in the same tier (`opus`/`sonnet`/`haiku`),
+  falling back to the global highest-output rate only for an unrecognized
+  tier. A not-yet-carded `claude-opus-4-8` now inherits the current Opus
+  rate instead of the retired `claude-opus-4-1` rate (the 3× trap above).
+  `unknownModel` is still flagged either way so a stale card stays visible.
 - **Statusline field set realigned with the OSD overlay.** Swapped
   the streak count and cache-discipline ratio for the parallelism
   inputs (`ctx/wall`) and cache-hit percent. New order:
