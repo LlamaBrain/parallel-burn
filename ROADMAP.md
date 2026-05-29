@@ -54,6 +54,18 @@ the loop the reconciliation procedure exposed.
   ship a sample under `examples/` operators can copy, or
   document in README that the wrapper is the operator's
   responsibility and call out the two pitfalls.
+- [ ] **`pricing.json` lookup is cwd-relative, not
+  script-relative.** Running `node dist/cli/parallel-burn.js`
+  from any directory other than the repo root throws
+  `ENOENT: no such file or directory, open
+  '<cwd>/pricing.json'`. Hit while invoking the
+  `parallel-burn:parallel-burn` skill from inside a project
+  dir — Claude Code's working directory is the project, not
+  the parallel-burn install, so the skill is currently
+  unusable without a manual `cd`. Resolve `pricing.json`
+  relative to the script (`import.meta.url` / `__dirname`),
+  not `process.cwd()`. Same fix likely needed anywhere else
+  the CLI reads packaged data files.
 
 ## Tracking
 
