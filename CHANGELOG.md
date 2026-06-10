@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-06-10
+
+### Added
+
+- **`claude-fable-5` and `claude-mythos-5` pricing** (both launched
+  2026-06-09). Carded at the published $10/$50 per-MTok tier with cache
+  rates $12.50 (5m write) / $20.00 (1h write) / $1.00 (read) — the
+  standard 1.25× / 2× / 0.1× multipliers on a $10 input. Mythos 5 is
+  Glasswing-limited-availability but priced identically to Fable 5. Both
+  resolve via exact match; the family-aware fallback (ADR-0008) is
+  untouched — the new single-version naming (`claude-<name>-N`) doesn't
+  fit the `opus`/`sonnet`/`haiku` `major-minor` tier pattern, and the
+  global-max fallback is unchanged (`claude-opus-4-1`'s $75 output still
+  tops Fable's $50). Bumped `pricing.json` `as_of` to 2026-06-10.
+
 ## [1.1.0] — 2026-05-29
 
 ### Fixed

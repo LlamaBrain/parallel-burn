@@ -1,9 +1,23 @@
 {
   "schema_version": "1.0",
-  "as_of": "2026-05-29",
+  "as_of": "2026-06-10",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "currency": "USD",
   "models": {
+    "claude-fable-5": {
+      "input_per_mtok": 10.00,
+      "output_per_mtok": 50.00,
+      "cache_write_5m_per_mtok": 12.50,
+      "cache_write_1h_per_mtok": 20.00,
+      "cache_read_per_mtok": 1.00
+    },
+    "claude-mythos-5": {
+      "input_per_mtok": 10.00,
+      "output_per_mtok": 50.00,
+      "cache_write_5m_per_mtok": 12.50,
+      "cache_write_1h_per_mtok": 20.00,
+      "cache_read_per_mtok": 1.00
+    },
     "claude-opus-4-8": {
       "input_per_mtok": 5.00,
       "output_per_mtok": 25.00,

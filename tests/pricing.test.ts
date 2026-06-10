@@ -119,6 +119,22 @@ describe("PricingProvider.fromFile", () => {
     expect(p.has("claude-sonnet-4-6")).toBe(true);
     expect(p.has("claude-haiku-4-5")).toBe(true);
   });
+
+  it("cards the Fable 5 and Mythos 5 rates exactly as published (2026-06-09 launch)", async () => {
+    // Both ship at the same $10/$50 tier; Mythos 5 is Glasswing-limited but
+    // priced identically. Lock the published cache rates to the cent so a
+    // future careless edit can't silently drift them.
+    const p = await PricingProvider.fromFile(join(process.cwd(), "pricing.json"));
+    for (const id of ["claude-fable-5", "claude-mythos-5"]) {
+      const r = p.get(id);
+      expect(r, `${id} must be carded`).toBeDefined();
+      expect(r?.input_per_mtok).toBe(10.0);
+      expect(r?.output_per_mtok).toBe(50.0);
+      expect(r?.cache_write_5m_per_mtok).toBe(12.5); // 1.25× input
+      expect(r?.cache_write_1h_per_mtok).toBe(20.0); // 2× input
+      expect(r?.cache_read_per_mtok).toBe(1.0); // 0.1× input
+    }
+  });
 });
 
 describe("PricingProvider.fromRemoteWithFallback", () => {

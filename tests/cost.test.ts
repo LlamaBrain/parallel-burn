@@ -16,6 +16,20 @@ const PRICING_DOC: PricingDocument = {
   source: "test fixture",
   currency: "USD",
   models: {
+    "claude-fable-5": {
+      input_per_mtok: 10.0,
+      output_per_mtok: 50.0,
+      cache_write_5m_per_mtok: 12.5,
+      cache_write_1h_per_mtok: 20.0,
+      cache_read_per_mtok: 1.0,
+    },
+    "claude-mythos-5": {
+      input_per_mtok: 10.0,
+      output_per_mtok: 50.0,
+      cache_write_5m_per_mtok: 12.5,
+      cache_write_1h_per_mtok: 20.0,
+      cache_read_per_mtok: 1.0,
+    },
     "claude-opus-4-7": {
       input_per_mtok: 15.0,
       output_per_mtok: 75.0,
@@ -107,6 +121,45 @@ describe("computeCost — known models", () => {
     expect(c.cacheWrite5m).toBe(0);
     expect(c.cacheWrite1h).toBe(0);
     expect(c.cacheRead).toBe(0);
+  });
+
+  it("Fable 5 full breakdown matches the published $10/$50 tier to the cent", () => {
+    // 100k input  × $10/MTok    = $1.00
+    //  20k output × $50/MTok    = $1.00
+    //  40k 5m wr  × $12.50/MTok = $0.50
+    //  10k 1h wr  × $20/MTok    = $0.20
+    //  80k read   × $1/MTok     = $0.08
+    // total                     = $2.78
+    const c = computeCost(
+      event("claude-fable-5", {
+        input_tokens: 100_000,
+        output_tokens: 20_000,
+        cache_creation_input_tokens: 50_000,
+        cache_read_input_tokens: 80_000,
+        cache_creation: {
+          ephemeral_5m_input_tokens: 40_000,
+          ephemeral_1h_input_tokens: 10_000,
+        },
+      }),
+      PRICING,
+    );
+    expect(c.input).toBeCloseTo(1.0, 10);
+    expect(c.output).toBeCloseTo(1.0, 10);
+    expect(c.cacheWrite5m).toBeCloseTo(0.5, 10);
+    expect(c.cacheWrite1h).toBeCloseTo(0.2, 10);
+    expect(c.cacheRead).toBeCloseTo(0.08, 10);
+    expect(c.total).toBeCloseTo(2.78, 10);
+    expect(c.unknownModel).toBe(false);
+    expect(c.conservativeFallbackModel).toBeNull();
+  });
+
+  it("Mythos 5 is carded at the same tier as Fable 5 (Glasswing-limited, identical rate)", () => {
+    const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
+    const fable = computeCost(event("claude-fable-5", usage), PRICING);
+    const mythos = computeCost(event("claude-mythos-5", usage), PRICING);
+    expect(mythos.unknownModel).toBe(false);
+    expect(mythos.total).toBeCloseTo(60.0, 10); // $10 input + $50 output
+    expect(mythos.total).toBeCloseTo(fable.total, 10);
   });
 });
 
